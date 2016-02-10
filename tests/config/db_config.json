@@ -1,0 +1,17 @@
+{
+	"name": "main",
+	"couchbird": {
+		"server_ip": "127.0.0.1",
+		"n1ql": "127.0.0.1:8093"
+	},
+	"buckets": {
+		"main": "rdf",
+		"auth": "ss",
+		"history": "rdf"
+	},
+	"vocabulary": {
+		"basic": "iris://vocabulary/basic",
+		"domain": "iris://vocabulary/domain",
+		"fs": false
+	}
+}
