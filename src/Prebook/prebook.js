@@ -4,6 +4,7 @@ let emitter = require("global-prebook");
 let BookingApi = require('resource-management-framework').BookingApi;
 let ServiceApi = require('resource-management-framework').ServiceApi;
 let moment = require('moment-timezone');
+let moment_range = require('moment-range');
 
 class Prebook {
 	constructor() {
@@ -264,6 +265,7 @@ class Prebook {
 		service,
 		dedicated_date,
 		workstation,
+		days,
 		service_count = 1,
 		per_service = 1
 	}) {
@@ -271,7 +273,8 @@ class Prebook {
 		return Promise.props({
 				pre: this.prepareTerminalProcessing({
 					workstation,
-					service
+					service,
+					dedicated_date
 				})
 			})
 			.then(({
@@ -282,7 +285,7 @@ class Prebook {
 					time_description: pre.srv.live_operation_time
 				}];
 				return this.iris.observe({
-					operator: _.keys(allowed_agent),
+					operator: '*',
 					services: servs,
 					time_description: pre.td,
 					dedicated_date: pre.d_date,
