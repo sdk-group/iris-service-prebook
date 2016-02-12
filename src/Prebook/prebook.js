@@ -1,6 +1,6 @@
 'use strict'
 
-let emitter = require("global-prebook");
+let emitter = require("global-queue");
 let BookingApi = require('resource-management-framework').BookingApi;
 let ServiceApi = require('resource-management-framework').ServiceApi;
 let moment = require('moment-timezone');
