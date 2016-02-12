@@ -1,25 +1,25 @@
 'use strict'
-
 let emitter = require("global-queue");
-let BookingApi = require('resource-management-framework').BookingApi;
-let ServiceApi = require('resource-management-framework').ServiceApi;
+let BookingApi = require('resource-management-framework')
+	.BookingApi;
+let ServiceApi = require('resource-management-framework')
+	.ServiceApi;
 let moment = require('moment-timezone');
-let moment_range = require('moment-range');
+require('moment-range');
+
+
 
 class Prebook {
 	constructor() {
 		this.emitter = emitter;
 	}
-
 	init(config) {
-		this.iris = new BookingApi();
-		this.iris.initContent();
-		this.services = new ServiceApi();
-		this.services.initContent();
-
-	}
-
-	//API
+			this.iris = new BookingApi();
+			this.iris.initContent();
+			this.services = new ServiceApi();
+			this.services.initContent();
+		}
+		//API
 	getTickets({
 		query,
 		keys
@@ -47,12 +47,11 @@ class Prebook {
 			})
 			.then(res => {
 				ws = _.find(res, t => (t.id == workstation || t.key == workstation));
-				return embed_schedules ?
-					this.services.getOrganizationSchedulesChain({
-						keys: ws.attached_to
-					}) : this.services.getOrganizationChain({
-						keys: ws.attached_to
-					});
+				return embed_schedules ? this.services.getOrganizationSchedulesChain({
+					keys: ws.attached_to
+				}) : this.services.getOrganizationChain({
+					keys: ws.attached_to
+				});
 			})
 			.then((office) => {
 				let org_chain = office;
@@ -63,10 +62,10 @@ class Prebook {
 				let org_addr = {};
 				let dept_id = _.find(office, (item) => (item.type == "Department")) || {};
 				dept_id = dept_id.id;
-				if(dept_id) org_addr.department = dept_id;
+				if (dept_id) org_addr.department = dept_id;
 				let off_id = _.find(office, (item) => (item.type == "Office")) || {};
 				off_id = off_id.id;
-				if(off_id) org_addr.office = off_id;
+				if (off_id) org_addr.office = off_id;
 				return {
 					ws,
 					org_addr,
@@ -76,6 +75,7 @@ class Prebook {
 			});
 	}
 
+
 	getDates({
 		dedicated_date,
 		tz,
@@ -83,21 +83,22 @@ class Prebook {
 	}) {
 		let dedicated = dedicated_date ? moment(dedicated_date) : moment();
 		let booking = moment.utc();
-		let day = tz ? dedicated.tz(tz).format('dddd') : dedicated.format("dddd");
-		let start = tz ? moment().tz(tz).diff(moment().tz(tz).startOf('day'), 'seconds') : moment().utc().diff(moment().utc().startOf('day'), 'seconds');
+		let day = tz ? dedicated.tz(tz)
+			.format('dddd') : dedicated.format("dddd");
 		let sch = _.find(schedules, (piece) => {
 			return !!~_.indexOf(piece.has_day, day);
 		});
 		let chunks = sch ? _.flatMap(sch.has_time_description, 'data.0') : [19 * 3600];
-		let td = [start, _.max(chunks)];
-
+		let td = [_.min(chunks), _.max(chunks)];
 		return {
-			d_date: dedicated.utc().format("YYYY-MM-DD"),
+			d_date: dedicated.utc()
+				.format("YYYY-MM-DD"),
 			b_date: booking.format(),
 			day,
 			td
 		};
 	}
+
 
 	prepareTerminalProcessing({
 		workstation,
@@ -117,31 +118,38 @@ class Prebook {
 				org_data,
 				srv
 			}) => {
-				let {
-					d_date,
-					b_date,
-					td,
-					day
-				} = this.getDates({
-					dedicated_date,
-					tz: org_data.org_merged.org_timezone,
-					schedules: org_data.org_merged.has_schedule
+				let dates = _.isArray(dedicated_date) ? moment.range(_.map(dedicated_date, (d) => moment(d))) : [dedicated_date];
+				let res = _.map(dates, (dedicated_date) => {
+					let {
+						d_date,
+						b_date,
+						td,
+						day
+					} = this.getDates({
+						dedicated_date,
+						tz: org_data.org_merged.org_timezone,
+						schedules: org_data.org_merged.has_schedule
+					});
+					srv = _.find(srv, (t) => (t.id == service || t.key == service));
+					return {
+						ws: org_data.ws,
+						org_addr: org_data.org_addr,
+						org_merged: org_data.org_merged,
+						org_chain: org_data.org_chain,
+						srv,
+						d_date,
+						b_date,
+						td,
+						day
+					};
 				});
-				srv = _.find(srv, (t) => (t.id == service || t.key == service));
-				return {
-					ws: org_data.ws,
-					org_addr: org_data.org_addr,
-					org_merged: org_data.org_merged,
-					org_chain: org_data.org_chain,
-					srv,
-					d_date,
-					b_date,
-					td,
-					day
-				};
+
+				return (_.size(res) == 1) ? res[0] : res;
+			})
+			.catch(err => {
+				console.log("PREBOOK TERM PREPARE ERR", err.stack);
 			});
 	}
-
 	actionTicketConfirm(fields) {
 		let fnames = ['service', 'dedicated_date', 'service_count', 'priority', 'workstation', 'user_id', 'user_type', '_action', 'request_id'];
 		let {
@@ -246,12 +254,12 @@ class Prebook {
 			});
 	}
 
+
 	actionTicketCompleteData({
 		ticket,
 		org_chain,
 		service_info
 	}) {
-
 		return Promise.props({
 			ticket: this.getTickets({
 				keys: ticket
@@ -261,44 +269,59 @@ class Prebook {
 		});
 	}
 
+	observeDay() {
+
+	}
+
 	actionTicketObserve({
 		service,
-		dedicated_date,
 		workstation,
 		days,
 		service_count = 1,
 		per_service = 1
 	}) {
-		console.log("OBSERVING", service, dedicated_date);
-		return Promise.props({
-				pre: this.prepareTerminalProcessing({
-					workstation,
-					service,
-					dedicated_date
-				})
-			})
-			.then(({
-				pre
-			}) => {
-				let servs = [{
-					service: pre.srv.key,
-					time_description: pre.srv.live_operation_time
-				}];
-				return this.iris.observe({
-					operator: '*',
-					services: servs,
-					time_description: pre.td,
-					dedicated_date: pre.d_date,
-					day: pre.day,
-					count: per_service,
-					service_count
-				});
+		console.log("OBSERVING PREBOOK", service, dedicated_date);
+		return this.prepareTerminalProcessing({
+				workstation,
+				service,
+				dedicated_date: days
 			})
 			.then((res) => {
-				// console.log("RES", require('util').inspect(res, {
-				// 	depth: null
-				// }));
-				return _.flatMap(res, _.values);
+				let keyed = _.keyBy(res, 'd_date');
+				let promises = _.mapValues(keyed, (pre) => {
+					let servs = [{
+						service: pre.srv.key,
+						time_description: pre.srv.live_operation_time
+					}];
+
+					return this.iris.observe({
+						operator: '*',
+						services: servs,
+						time_description: pre.td,
+						dedicated_date: pre.d_date,
+						day: pre.day,
+						count: per_service,
+						service_count
+					});
+				});
+
+				return Promise.props(promises);
+			})
+			.then((res) => {
+				console.log("RES", require('util')
+					.inspect(res, {
+						depth: null
+					}));
+				return {
+					success: true,
+					days: _.map(res, (day_data, day) => {
+						let slots = _.values(day_data);
+						return {
+							is_available: !_.isEmpty(slots),
+							slots
+						};
+					})
+				};
 			})
 			.catch((err) => {
 				console.log("PRE OBSERVE ERR!", err.stack);
@@ -308,9 +331,5 @@ class Prebook {
 				};
 			});
 	}
-
-
-
 }
-
 module.exports = Prebook;
