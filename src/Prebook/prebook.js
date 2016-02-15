@@ -117,7 +117,7 @@ class Prebook {
 					};
 				});
 
-				return (_.size(res) == 1) ? res[0] : res;
+				return(_.size(res) == 1) ? res[0] : res;
 			})
 			.catch(err => {
 				console.log("PREBOOK TERM PREPARE ERR", err.stack);
@@ -134,7 +134,6 @@ class Prebook {
 		} = _.pick(fields, fnames);
 		let user_info = _.omit(fields, fnames);
 		let org;
-		let ws;
 		let service_info;
 		return this.prepareTerminalProcessing({
 				workstation,
@@ -163,6 +162,7 @@ class Prebook {
 					b_date,
 					srv,
 					day,
+					ws,
 					pin: this.emitter.addTask('code-registry', {
 						_action: 'make-pin',
 						prefix: org_merged.pin_code_prefix
@@ -198,7 +198,7 @@ class Prebook {
 					service: srv.key,
 					label,
 					service_count,
-					state: 'registered'
+					state: ws.prebook_state || 'registered'
 				};
 				return this.iris.confirm({
 					operator: '*',
