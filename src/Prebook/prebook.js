@@ -90,8 +90,9 @@ class Prebook {
 				org_data,
 				srv
 			}) => {
-				let dates = _.isArray(dedicated_date) ? moment.range(_.map(dedicated_date, (d) => moment(d))) : [dedicated_date];
 				srv = _.find(srv, (t) => (t.id == service || t.key == service));
+				// let start = moment.utc().add(srv.prebook_offset);
+				let dates = _.isArray(dedicated_date) ? moment.range(_.map(dedicated_date, (d) => moment(d))) : [dedicated_date];
 				let res = _.map(dates, (dedicated_date) => {
 					let {
 						d_date,
@@ -248,7 +249,7 @@ class Prebook {
 		service_count = 1,
 		per_service = 100
 	}) {
-		console.log("OBSERVING PREBOOK", service, dedicated_date);
+		console.log("OBSERVING PREBOOK", service);
 		return this.prepareTerminalProcessing({
 				workstation,
 				service,
@@ -287,6 +288,7 @@ class Prebook {
 						let slots = _.values(day_data);
 						return {
 							is_available: !_.isEmpty(slots),
+							date: day,
 							slots
 						};
 					})
