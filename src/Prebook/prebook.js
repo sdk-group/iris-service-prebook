@@ -40,39 +40,11 @@ class Prebook {
 		workstation,
 		embed_schedules = false
 	}) {
-		let ws;
-		return this.emitter.addTask('workstation', {
-				_action: 'by-id',
-				workstation
-			})
-			.then(res => {
-				ws = _.find(res, t => (t.id == workstation || t.key == workstation));
-				return embed_schedules ? this.services.getOrganizationSchedulesChain({
-					keys: ws.attached_to
-				}) : this.services.getOrganizationChain({
-					keys: ws.attached_to
-				});
-			})
-			.then((office) => {
-				let org_chain = office;
-				let org_merged = _.reduce(_.orderBy(_.keys(office), _.parseInt, 'desc'), (acc, val) => {
-					acc = _.merge(acc, office[val]);
-					return acc;
-				}, {});
-				let org_addr = {};
-				let dept_id = _.find(office, (item) => (item.type == "Department")) || {};
-				dept_id = dept_id.id;
-				if (dept_id) org_addr.department = dept_id;
-				let off_id = _.find(office, (item) => (item.type == "Office")) || {};
-				off_id = off_id.id;
-				if (off_id) org_addr.office = off_id;
-				return {
-					ws,
-					org_addr,
-					org_chain,
-					org_merged
-				}
-			});
+		return this.emitter.addTask('queue', {
+			_action: 'workstation-organization-data',
+			workstation,
+			embed_schedules
+		});
 	}
 
 
@@ -269,16 +241,12 @@ class Prebook {
 		});
 	}
 
-	observeDay() {
-
-	}
-
 	actionTicketObserve({
 		service,
 		workstation,
 		days,
 		service_count = 1,
-		per_service = 1
+		per_service = 100
 	}) {
 		console.log("OBSERVING PREBOOK", service, dedicated_date);
 		return this.prepareTerminalProcessing({
@@ -293,6 +261,7 @@ class Prebook {
 						service: pre.srv.key,
 						time_description: pre.srv.live_operation_time
 					}];
+					console.log("OBSERVING PREBOOK II", pre);
 
 					return this.iris.observe({
 						operator: '*',
