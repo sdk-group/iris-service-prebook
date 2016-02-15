@@ -119,6 +119,7 @@ class Prebook {
 				srv
 			}) => {
 				let dates = _.isArray(dedicated_date) ? moment.range(_.map(dedicated_date, (d) => moment(d))) : [dedicated_date];
+				srv = _.find(srv, (t) => (t.id == service || t.key == service));
 				let res = _.map(dates, (dedicated_date) => {
 					let {
 						d_date,
@@ -130,7 +131,6 @@ class Prebook {
 						tz: org_data.org_merged.org_timezone,
 						schedules: org_data.org_merged.has_schedule
 					});
-					srv = _.find(srv, (t) => (t.id == service || t.key == service));
 					return {
 						ws: org_data.ws,
 						org_addr: org_data.org_addr,
