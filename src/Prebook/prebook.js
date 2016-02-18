@@ -30,7 +30,7 @@ class Prebook {
 				keys
 			})
 			.then((res) => {
-				// console.log("RES Q", res);
+				// console.log("RES Q", res, query);
 				return _.values(res);
 			});
 	}
@@ -67,12 +67,81 @@ class Prebook {
 				.format("YYYY-MM-DD"),
 			b_date: booking.format(),
 			day,
-			td
+			td,
+			today: (booking.format("YYYY-MM-DD") === dedicated.format("YYYY-MM-DD"))
 		};
 	}
 
 
-	prepareTerminalProcessing({
+	prepareAvailableDaysProcessing({
+		workstation,
+		service,
+		start = 0,
+		end
+	}) {
+		return Promise.props({
+				org_data: this.actionWorkstationOrganizationData({
+					workstation,
+					embed_schedules: true
+				}),
+				srv: this.services.getService({
+					keys: service
+				})
+			})
+			.then(({
+				org_data,
+				srv
+			}) => {
+				srv = _.find(srv, (t) => (t.id == service || t.key == service));
+				let d_start = moment.utc()
+					.add(srv.prebook_offset, 'days');
+				let d_end = d_start.clone()
+					.add(srv.prebook_interval, 'days');
+				let dates = [];
+				moment.range(d_start, d_end)
+					.by('days', (d) => {
+						dates.push(d);
+					});
+
+				let p_start = _.clamp(start, 0, dates.length - 1);
+				let p_end = _.clamp(end, 0, dates.length - 1);
+				let done = (p_end == dates.length - 1);
+				let days = _.slice(dates, p_start, p_end + 1);
+				return {
+					days: _.map(days, (dedicated_date) => {
+						let {
+							d_date,
+							b_date,
+							td,
+							day,
+							today
+						} = this.getDates({
+							dedicated_date,
+							tz: org_data.org_merged.org_timezone,
+							schedules: org_data.org_merged.has_schedule
+						});
+						return {
+							ws: org_data.ws,
+							org_addr: org_data.org_addr,
+							org_merged: org_data.org_merged,
+							org_chain: org_data.org_chain,
+							srv,
+							d_date,
+							b_date,
+							td,
+							day,
+							today
+						};
+					}),
+					done
+				};
+			})
+			.catch(err => {
+				console.log("PREBOOK TERM PREPARE ERR", err.stack);
+			});
+	}
+
+	preparePrebookProcessing({
 		workstation,
 		service,
 		dedicated_date
@@ -91,81 +160,70 @@ class Prebook {
 				srv
 			}) => {
 				srv = _.find(srv, (t) => (t.id == service || t.key == service));
-				// let start = moment.utc().add(srv.prebook_offset);
-				let dates = _.isArray(dedicated_date) ? moment.range(_.map(dedicated_date, (d) => moment(d))) : [dedicated_date];
-				let res = _.map(dates, (dedicated_date) => {
-					let {
-						d_date,
-						b_date,
-						td,
-						day
-					} = this.getDates({
-						dedicated_date,
-						tz: org_data.org_merged.org_timezone,
-						schedules: org_data.org_merged.has_schedule
-					});
-					return {
-						ws: org_data.ws,
-						org_addr: org_data.org_addr,
-						org_merged: org_data.org_merged,
-						org_chain: org_data.org_chain,
-						srv,
-						d_date,
-						b_date,
-						td,
-						day
-					};
+				let {
+					d_date,
+					b_date,
+					td,
+					day,
+					today
+				} = this.getDates({
+					dedicated_date,
+					tz: org_data.org_merged.org_timezone,
+					schedules: org_data.org_merged.has_schedule
 				});
-
-				return(_.size(res) == 1) ? res[0] : res;
+				return {
+					ws: org_data.ws,
+					org_addr: org_data.org_addr,
+					org_merged: org_data.org_merged,
+					org_chain: org_data.org_chain,
+					srv,
+					d_date,
+					b_date,
+					td,
+					day,
+					today
+				};
 			})
 			.catch(err => {
 				console.log("PREBOOK TERM PREPARE ERR", err.stack);
 			});
 	}
+
 	actionTicketConfirm(fields) {
-		let fnames = ['service', 'dedicated_date', 'service_count', 'priority', 'workstation', 'user_id', 'user_type', '_action', 'request_id'];
+		let fnames = ['service', 'dedicated_date', 'service_count', 'priority', 'workstation', 'user_id', 'user_type', '_action', 'request_id', 'time_description'];
 		let {
 			service,
 			dedicated_date,
 			service_count,
 			priority,
-			workstation
+			workstation,
+			time_description
 		} = _.pick(fields, fnames);
 		let user_info = _.omit(fields, fnames);
 		let org;
 		let service_info;
-		return this.prepareTerminalProcessing({
+		return this.preparePrebookProcessing({
 				workstation,
 				service,
 				dedicated_date
 			})
-			.then(({
-				ws,
-				org_addr,
-				org_chain,
-				org_merged,
-				srv,
-				d_date,
-				b_date,
-				td,
-				day
-			}) => {
-				org = {
-					org_chain,
-					org_merged
-				};
-				service_info = srv;
+			.then((res) => {
+				let keyed = _.keyBy(res, 'd_date');
+				return this.getValid(keyed);
+			})
+			.then((keyed) => {
+				let pre = _.sample(keyed);
+				console.log("CONFIRMING PREBOOK II", pre);
+				org = pre.org_chain;
+				service_info = pre.srv;
 				return Promise.props({
-					td,
-					d_date,
-					b_date,
-					srv,
-					day,
-					ws,
+					td: pre.td,
+					d_date: pre.d_date,
+					b_date: pre.b_date,
+					day: pre.day,
 					pin: this.emitter.addTask('code-registry', {
 						_action: 'make-pin',
-						prefix: org_merged.pin_code_prefix
+						prefix: pre.org_merged.pin_code_prefix
 					}),
 					priority_level: this.emitter.addTask('ticket', {
 						_action: 'compute-priority',
@@ -173,8 +231,8 @@ class Prebook {
 					}),
 					label: this.emitter.addTask('code-registry', {
 						_action: 'make-label',
-						prefix: srv.prefix,
-						date: d_date
+						prefix: pre.srv.prefix,
+						date: pre.d_date
 					})
 				});
 			})
@@ -182,7 +240,6 @@ class Prebook {
 				td,
 				d_date,
 				b_date,
-				srv,
 				day,
 				priority_level,
 				pin,
@@ -191,11 +248,11 @@ class Prebook {
 				let tick = {
 					dedicated_date: d_date,
 					booking_date: b_date,
-					time_description: srv.live_operation_time,
+					time_description,
 					priority: priority_level,
 					code: pin,
 					user_info,
-					service: srv.key,
+					service: service_info.id,
 					label,
 					service_count,
 					state: ws.prebook_state || 'registered'
@@ -205,6 +262,7 @@ class Prebook {
 					time_description: td,
 					dedicated_date: d_date,
 					tick,
+					method: 'prebook',
 					day
 				});
 			})
@@ -213,7 +271,7 @@ class Prebook {
 					success: _.isEmpty(res.lost),
 					tickets: this.actionTicketCompleteData({
 						ticket: _.keys(res.placed),
-						org_chain: org.org_chain,
+						org_chain: org,
 						service_info
 					})
 				});
@@ -242,34 +300,92 @@ class Prebook {
 		});
 	}
 
+
 	actionTicketObserve({
 		service,
+		dedicated_date,
 		workstation,
-		days,
 		service_count = 1,
 		per_service = 100
 	}) {
-		console.log("OBSERVING PREBOOK", service);
-		return this.prepareTerminalProcessing({
+		return this.preparePrebookProcessing({
 				workstation,
 				service,
-				dedicated_date: days
+				dedicated_date
 			})
 			.then((res) => {
 				let keyed = _.keyBy(res, 'd_date');
-				let promises = _.mapValues(keyed, (pre) => {
-					let servs = [{
-						service: pre.srv.key,
-						time_description: pre.srv.live_operation_time
-					}];
-					console.log("OBSERVING PREBOOK II", pre);
+				return this.getValid(keyed);
+			})
+			.then((keyed) => {
+				let pre = _.sample(keyed);
+				console.log("OBSERVING PREBOOK II", pre);
 
-					return this.iris.observe({
+				return !pre ? {} : this.iris.observe({
+					operator: '*',
+					services: [{
+						service: pre.srv.id,
+						time_description: pre.srv.prebook_operation_time
+						}],
+					time_description: pre.td,
+					dedicated_date: pre.d_date,
+					day: pre.day,
+					method: 'prebook',
+					count: per_service,
+					service_count
+				});
+			})
+			.then((res) => {
+				console.log("RES", require('util')
+					.inspect(res, {
+						depth: null
+					}));
+				return _.flatMap(res, _.values);
+			})
+			.catch((err) => {
+				console.log("PRE OBSERVE ERR!", err.stack);
+				return {
+					success: false,
+					reason: err.message
+				};
+			});
+	}
+
+	actionAvailableDays({
+		service,
+		workstation,
+		service_count = 1,
+		per_service = 1,
+		start,
+		end
+	}) {
+		let done;
+		console.log("OBSERVING PREBOOK", service);
+		return this.prepareAvailableDaysProcessing({
+				workstation,
+				service,
+				start,
+				end
+			})
+			.then((res) => {
+				let keyed = _.keyBy(res.days, 'd_date');
+				done = res.done;
+				return this.getValid(keyed);
+			})
+			.then((keyed) => {
+				let promises = _.mapValues(keyed, (pre) => {
+					// console.log("OBSERVING PREBOOK II", pre);
+
+					return !pre ? {} : this.iris.observe({
 						operator: '*',
-						services: servs,
+						services: [{
+							service: pre.srv.id,
+							time_description: pre.srv.prebook_operation_time
+						}],
 						time_description: pre.td,
 						dedicated_date: pre.d_date,
 						day: pre.day,
+						method: 'prebook',
 						count: per_service,
 						service_count
 					});
@@ -278,18 +394,17 @@ class Prebook {
 				return Promise.props(promises);
 			})
 			.then((res) => {
-				console.log("RES", require('util')
-					.inspect(res, {
-						depth: null
-					}));
+				// console.log("RES", require('util')
+				// 	.inspect(res, {
+				// 		depth: null
+				// 	}));
 				return {
 					success: true,
+					done,
 					days: _.map(res, (day_data, day) => {
-						let slots = _.values(day_data);
 						return {
-							is_available: !_.isEmpty(slots),
-							date: day,
-							slots
+							is_available: !_.isEmpty(_.values(day_data)),
+							date: moment.utc(day)
 						};
 					})
 				};
@@ -300,6 +415,51 @@ class Prebook {
 					success: false,
 					reason: err.message
 				};
+			});
+	}
+
+	getValid(keyed) {
+		let promises = _.reduce(keyed, (acc, pre, key) => {
+			acc[key] = Promise.props({
+				tickets: this.getTickets({
+					query: {
+						dedicated_date: pre.d_date,
+						service: pre.srv.id,
+						state: pre.ws.prebook_state
+					}
+				}),
+				plans: this.iris.getAllPlansLength({
+					operator: '*',
+					service: pre.srv.id,
+					day: pre.day,
+					dedicated_date: pre.d_date,
+					time_description: pre.td,
+					method: 'live'
+				}),
+				pre
+			});
+			return acc;
+		}, {});
+		return Promise.props(promises)
+			.then((keyed) => {
+				return _.reduce(keyed, (acc, {
+					tickets,
+					plans,
+					pre
+				}, key) => {
+					let tick_length = _.reduce(tickets, (acc, tick) => {
+						if (_.isArray(tick.time_description))
+							acc += (tick.time_description[1] - tick.time_description[0]);
+						return acc;
+					}, 0);
+					let part = (pre.today ? pre.srv.prebook_today_percentage : pre.srv.prebook_percentage) / 100;
+					if (plans * part >= (tick_length + pre.srv.prebook_operation_time))
+						acc[key] = pre;
+					else
+						acc[key] = false;
+					// console.log("CHECKING", key, (tick_length + pre.srv.prebook_operation_time), plans * part, part);
+					return acc;
+				}, {});
 			});
 	}
 }
