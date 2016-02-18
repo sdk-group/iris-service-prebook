@@ -360,7 +360,8 @@ class Prebook {
 		end
 	}) {
 		let done;
-		console.log("OBSERVING PREBOOK", service);
+		let time = process.hrtime();
+		console.log("OBSERVING AVDAYS PREBOOK", service, workstation, start, end);
 		return this.prepareAvailableDaysProcessing({
 				workstation,
 				service,
@@ -398,6 +399,9 @@ class Prebook {
 				// 	.inspect(res, {
 				// 		depth: null
 				// 	}));
+				let diff = process.hrtime(time);
+
+				console.log('took %d nanoseconds', diff[0] * 1e9 + diff[1]);
 				return {
 					success: true,
 					done,
