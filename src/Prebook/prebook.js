@@ -208,7 +208,7 @@ class Prebook {
 				dedicated_date
 			})
 			.then((res) => {
-				let keyed = _.keyBy(res, 'd_date');
+				let keyed = _.keyBy([res], 'd_date');
 				return this.getValid(keyed);
 			})
 			.then((keyed) => {
@@ -314,7 +314,7 @@ class Prebook {
 				dedicated_date
 			})
 			.then((res) => {
-				let keyed = _.keyBy(res, 'd_date');
+				let keyed = _.keyBy([res], 'd_date');
 				return this.getValid(keyed);
 			})
 			.then((keyed) => {
@@ -326,7 +326,7 @@ class Prebook {
 					services: [{
 						service: pre.srv.id,
 						time_description: pre.srv.prebook_operation_time
-						}],
+					}],
 					time_description: pre.td,
 					dedicated_date: pre.d_date,
 					day: pre.day,
@@ -452,12 +452,12 @@ class Prebook {
 					pre
 				}, key) => {
 					let tick_length = _.reduce(tickets, (acc, tick) => {
-						if (_.isArray(tick.time_description))
+						if(_.isArray(tick.time_description))
 							acc += (tick.time_description[1] - tick.time_description[0]);
 						return acc;
 					}, 0);
 					let part = (pre.today ? pre.srv.prebook_today_percentage : pre.srv.prebook_percentage) / 100;
-					if (plans * part >= (tick_length + pre.srv.prebook_operation_time))
+					if(plans * part >= (tick_length + pre.srv.prebook_operation_time))
 						acc[key] = pre;
 					else
 						acc[key] = false;
