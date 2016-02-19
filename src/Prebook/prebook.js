@@ -340,7 +340,11 @@ class Prebook {
 				// 	.inspect(res, {
 				// 		depth: null
 				// 	}));
-				return _.values(res);
+				let slots = _.values(res);
+				return {
+					slots,
+					success: true
+				};
 			})
 			.catch((err) => {
 				console.log("PRE OBSERVE ERR!", err.stack);
