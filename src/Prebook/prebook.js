@@ -319,7 +319,7 @@ class Prebook {
 			})
 			.then((keyed) => {
 				let pre = _.sample(keyed);
-				console.log("OBSERVING PREBOOK II", pre);
+				// console.log("OBSERVING PREBOOK II", pre);
 
 				return !pre ? {} : this.iris.observe({
 					operator: '*',
@@ -340,7 +340,7 @@ class Prebook {
 					.inspect(res, {
 						depth: null
 					}));
-				return _.flatMap(res, _.values);
+				return _.values(res);
 			})
 			.catch((err) => {
 				console.log("PRE OBSERVE ERR!", err.stack);
@@ -452,12 +452,12 @@ class Prebook {
 					pre
 				}, key) => {
 					let tick_length = _.reduce(tickets, (acc, tick) => {
-						if(_.isArray(tick.time_description))
+						if (_.isArray(tick.time_description))
 							acc += (tick.time_description[1] - tick.time_description[0]);
 						return acc;
 					}, 0);
 					let part = (pre.today ? pre.srv.prebook_today_percentage : pre.srv.prebook_percentage) / 100;
-					if(plans * part >= (tick_length + pre.srv.prebook_operation_time))
+					if (plans * part >= (tick_length + pre.srv.prebook_operation_time))
 						acc[key] = pre;
 					else
 						acc[key] = false;
