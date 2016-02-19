@@ -213,11 +213,12 @@ class Prebook {
 			})
 			.then((keyed) => {
 				let pre = _.sample(keyed);
-				console.log("CONFIRMING PREBOOK II", pre);
+				// console.log("CONFIRMING PREBOOK II", pre, fields);
 				org = pre.org_chain;
 				service_info = pre.srv;
 				return Promise.props({
 					td: pre.td,
+					ws: pre.ws,
 					d_date: pre.d_date,
 					b_date: pre.b_date,
 					day: pre.day,
@@ -237,6 +238,7 @@ class Prebook {
 				});
 			})
 			.then(({
+				ws,
 				td,
 				d_date,
 				b_date,
