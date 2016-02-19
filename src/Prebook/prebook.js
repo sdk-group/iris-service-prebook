@@ -336,10 +336,10 @@ class Prebook {
 				});
 			})
 			.then((res) => {
-				console.log("RES", require('util')
-					.inspect(res, {
-						depth: null
-					}));
+				// console.log("RES", require('util')
+				// 	.inspect(res, {
+				// 		depth: null
+				// 	}));
 				return _.values(res);
 			})
 			.catch((err) => {
