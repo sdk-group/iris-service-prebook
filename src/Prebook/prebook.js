@@ -56,17 +56,17 @@ class Prebook {
 		// console.log("DD", dedicated_date, tz, schedules);
 		let dedicated = dedicated_date ? moment(dedicated_date) : moment();
 		let booking = moment.utc();
-		let day = tz ? dedicated.tz(tz)
-			.format('dddd') : dedicated.format("dddd");
+		let plan = dedicated.clone().tz(tz);
+		let day = tz ? plan.format('dddd') : dedicated.format("dddd");
 		let sch = _.find(schedules, (piece) => {
 			return !!~_.indexOf(piece.has_day, day);
 		});
 		let chunks = sch ? _.flatMap(sch.has_time_description, 'data.0') : [19 * 3600];
 		let td = [_.min(chunks), _.max(chunks)];
 		return {
-			d_date: dedicated.utc()
-				.format("YYYY-MM-DD"),
+			d_date: dedicated.format(),
 			b_date: booking.format(),
+			p_date: plan.format("YYYY-MM-DD"),
 			day,
 			td,
 			today: (booking.format("YYYY-MM-DD") === dedicated.format("YYYY-MM-DD"))
@@ -114,6 +114,7 @@ class Prebook {
 						let {
 							d_date,
 							b_date,
+							p_date,
 							td,
 							day,
 							today
@@ -130,6 +131,7 @@ class Prebook {
 							srv,
 							d_date,
 							b_date,
+							p_date,
 							td,
 							day,
 							today
@@ -165,6 +167,7 @@ class Prebook {
 				let {
 					d_date,
 					b_date,
+					p_date,
 					td,
 					day,
 					today
@@ -181,6 +184,7 @@ class Prebook {
 					srv,
 					d_date,
 					b_date,
+					p_date,
 					td,
 					day,
 					today
@@ -210,7 +214,7 @@ class Prebook {
 				dedicated_date
 			})
 			.then((res) => {
-				let keyed = _.keyBy([res], 'd_date');
+				let keyed = _.keyBy([res], 'p_date');
 				return this.getValid(keyed);
 			})
 			.then((keyed) => {
@@ -224,6 +228,7 @@ class Prebook {
 					ws: pre.ws,
 					d_date: pre.d_date,
 					b_date: pre.b_date,
+					p_date: pre.p_date,
 					day: pre.day,
 					pin: this.emitter.addTask('code-registry', {
 						_action: 'make-pin',
@@ -245,6 +250,7 @@ class Prebook {
 				td,
 				d_date,
 				b_date,
+				p_date,
 				day,
 				priority_level,
 				pin,
@@ -266,6 +272,7 @@ class Prebook {
 					operator: '*',
 					time_description: td,
 					dedicated_date: d_date,
+					local_date: p_date,
 					tick,
 					method: 'prebook',
 					day
@@ -319,7 +326,7 @@ class Prebook {
 				dedicated_date
 			})
 			.then((res) => {
-				let keyed = _.keyBy([res], 'd_date');
+				let keyed = _.keyBy([res], 'p_date');
 				return this.getValid(keyed);
 			})
 			.then((keyed) => {
@@ -336,6 +343,7 @@ class Prebook {
 					}],
 					time_description: pre.td,
 					dedicated_date: pre.d_date,
+					local_date: pre.p_date,
 					day: pre.day,
 					method: 'prebook',
 					count: per_service,
@@ -380,7 +388,7 @@ class Prebook {
 				end
 			})
 			.then((res) => {
-				let keyed = _.keyBy(res.days, 'd_date');
+				let keyed = _.keyBy(res.days, 'p_date');
 				done = res.done;
 				return this.getValid(keyed);
 			})
@@ -399,6 +407,7 @@ class Prebook {
 						}],
 						time_description: pre.td,
 						dedicated_date: pre.d_date,
+						local_date: pre.p_date,
 						day: pre.day,
 						method: 'prebook',
 						count: per_service,
@@ -451,7 +460,7 @@ class Prebook {
 					operator: '*',
 					service: pre.srv.id,
 					day: pre.day,
-					dedicated_date: pre.d_date,
+					local_date: pre.p_date,
 					time_description: pre.td,
 					method: 'live'
 				}),
@@ -467,7 +476,7 @@ class Prebook {
 					pre
 				}, key) => {
 					let tick_length = _.reduce(tickets, (acc, tick) => {
-						if (_.isArray(tick.time_description))
+						if(_.isArray(tick.time_description))
 							acc += (tick.time_description[1] - tick.time_description[0]);
 						return acc;
 					}, 0);
