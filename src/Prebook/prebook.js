@@ -53,6 +53,7 @@ class Prebook {
 		tz,
 		schedules
 	}) {
+		// console.log("DD", dedicated_date, tz, schedules);
 		let dedicated = dedicated_date ? moment(dedicated_date) : moment();
 		let booking = moment.utc();
 		let day = tz ? dedicated.tz(tz)
@@ -96,16 +97,17 @@ class Prebook {
 				let d_start = moment.utc()
 					.add(srv.prebook_offset, 'days');
 				let d_end = d_start.clone()
+					.utc()
 					.add(srv.prebook_interval, 'days');
 				let dates = [];
 				moment.range(d_start, d_end)
 					.by('days', (d) => {
-						dates.push(d);
+						dates.push(d.format());
 					});
 
 				let p_start = _.clamp(start, 0, dates.length - 1);
 				let p_end = _.clamp(end, 0, dates.length - 1);
-				let done = (p_end == dates.length - 1);
+				let done = (p_end == (dates.length - 1));
 				let days = _.slice(dates, p_start, p_end + 1);
 				return {
 					days: _.map(days, (dedicated_date) => {
@@ -212,7 +214,8 @@ class Prebook {
 				return this.getValid(keyed);
 			})
 			.then((keyed) => {
-				let pre = _.sample(keyed);
+				let pre = _.sample(keyed)
+					.data;
 				// console.log("CONFIRMING PREBOOK II", pre, fields);
 				org = pre.org_chain;
 				service_info = pre.srv;
@@ -321,9 +324,11 @@ class Prebook {
 			})
 			.then((keyed) => {
 				let pre = _.sample(keyed);
+				let success = pre.success;
+				pre = pre.data;
 				// console.log("OBSERVING PREBOOK II", pre);
 
-				return !pre ? {} : this.iris.observe({
+				return !success ? {} : this.iris.observe({
 					operator: '*',
 					services: [{
 						service: pre.srv.id,
@@ -367,7 +372,7 @@ class Prebook {
 	}) {
 		let done;
 		let time = process.hrtime();
-		console.log("OBSERVING AVDAYS PREBOOK", service, workstation, start, end);
+		// console.log("OBSERVING AVDAYS PREBOOK", service, workstation, start, end);
 		return this.prepareAvailableDaysProcessing({
 				workstation,
 				service,
@@ -380,10 +385,13 @@ class Prebook {
 				return this.getValid(keyed);
 			})
 			.then((keyed) => {
-				let promises = _.mapValues(keyed, (pre) => {
+				let promises = _.reduce(keyed, (acc, val, key) => {
 					// console.log("OBSERVING PREBOOK II", pre);
-
-					return !pre ? {} : this.iris.observe({
+					let pre = val.data;
+					let local_key = moment.utc(key)
+						.tz(pre.org_merged.org_timezone)
+						.format();
+					acc[local_key] = !val.success ? {} : this.iris.observe({
 						operator: '*',
 						services: [{
 							service: pre.srv.id,
@@ -396,7 +404,8 @@ class Prebook {
 						count: per_service,
 						service_count
 					});
-				});
+					return acc;
+				}, {});
 
 				return Promise.props(promises);
 			})
@@ -414,7 +423,7 @@ class Prebook {
 					days: _.map(res, (day_data, day) => {
 						return {
 							is_available: !_.isEmpty(_.values(day_data)),
-							date: moment.utc(day)
+							date: day
 						};
 					})
 				};
@@ -463,10 +472,11 @@ class Prebook {
 						return acc;
 					}, 0);
 					let part = (pre.today ? pre.srv.prebook_today_percentage : pre.srv.prebook_percentage) / 100;
-					if (plans * part >= (tick_length + pre.srv.prebook_operation_time))
-						acc[key] = pre;
-					else
-						acc[key] = false;
+					let success = (plans * part >= (tick_length + pre.srv.prebook_operation_time));
+					acc[key] = {
+						success,
+						data: pre
+					};
 					// console.log("CHECKING", key, (tick_length + pre.srv.prebook_operation_time), plans * part, part);
 					return acc;
 				}, {});
