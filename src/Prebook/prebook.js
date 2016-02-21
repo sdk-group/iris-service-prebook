@@ -65,7 +65,7 @@ class Prebook {
 		let chunks = sch ? _.flatMap(sch.has_time_description, 'data.0') : [19 * 3600];
 		let td = [_.min(chunks), _.max(chunks)];
 		return {
-			d_date: dedicated.format(),
+			d_date: dedicated.format("YYYY-MM-DD"),
 			b_date: booking.format(),
 			p_date: plan.format("YYYY-MM-DD"),
 			day,
