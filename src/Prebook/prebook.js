@@ -54,9 +54,10 @@ class Prebook {
 		schedules
 	}) {
 		// console.log("DD", dedicated_date, tz, schedules);
-		let dedicated = dedicated_date ? moment(dedicated_date) : moment();
+		let dedicated = dedicated_date ? moment.utc(dedicated_date) : moment.utc();
 		let booking = moment.utc();
-		let plan = dedicated.clone().tz(tz);
+		let plan = dedicated.clone();
+		plan.tz(tz);
 		let day = tz ? plan.format('dddd') : dedicated.format("dddd");
 		let sch = _.find(schedules, (piece) => {
 			return !!~_.indexOf(piece.has_day, day);
@@ -241,7 +242,7 @@ class Prebook {
 					label: this.emitter.addTask('code-registry', {
 						_action: 'make-label',
 						prefix: pre.srv.prefix,
-						date: pre.d_date
+						date: pre.p_date
 					})
 				});
 			})
@@ -476,7 +477,7 @@ class Prebook {
 					pre
 				}, key) => {
 					let tick_length = _.reduce(tickets, (acc, tick) => {
-						if(_.isArray(tick.time_description))
+						if (_.isArray(tick.time_description))
 							acc += (tick.time_description[1] - tick.time_description[0]);
 						return acc;
 					}, 0);
