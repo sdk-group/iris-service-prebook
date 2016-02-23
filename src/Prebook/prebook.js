@@ -280,6 +280,15 @@ class Prebook {
 				});
 			})
 			.then((res) => {
+				this.emitter.emit('history.log', {
+					subject: {
+						type: 'terminal',
+						id: workstation
+					},
+					object: _.keys(res.placed),
+					event_name: 'book',
+					reason: {}
+				});
 				return Promise.props({
 					success: _.isEmpty(res.lost),
 					tickets: this.actionTicketCompleteData({
