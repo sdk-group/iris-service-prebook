@@ -234,6 +234,8 @@ class Prebook {
 				// console.log("CONFIRMING PREBOOK II", pre, fields);
 				org = pre.org_chain;
 				service_info = pre.srv;
+				let prefix = _.join([pre.org_merged.prebook_label_prefix, pre.srv.prefix], '');
+				prefix = !_.isEmpty(prefix) && prefix;
 				return Promise.props({
 					td: pre.td,
 					ws: pre.ws,
@@ -252,7 +254,7 @@ class Prebook {
 					}),
 					label: this.emitter.addTask('code-registry', {
 						_action: 'make-label',
-						prefix: (pre.org_merged.prebook_label_prefix || '') + pre.srv.prefix,
+						prefix,
 						date: pre.p_date
 					})
 				});
