@@ -132,7 +132,7 @@ class Prebook {
 						} = this.getDates({
 							dedicated_date,
 							tz: org_data.org_merged.org_timezone,
-							schedules: org_data.org_merged.has_schedule
+							schedules: org_data.org_merged.has_schedule.prebook
 						});
 						return {
 							ws: org_data.ws,
@@ -185,7 +185,7 @@ class Prebook {
 				} = this.getDates({
 					dedicated_date,
 					tz: org_data.org_merged.org_timezone,
-					schedules: org_data.org_merged.has_schedule
+					schedules: org_data.org_merged.has_schedule.prebook
 				});
 				return {
 					ws: org_data.ws,
