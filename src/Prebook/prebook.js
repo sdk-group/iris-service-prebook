@@ -59,6 +59,15 @@ class Prebook {
 		let plan = dedicated.clone();
 		plan.tz(tz);
 		let day = tz ? plan.format('dddd') : dedicated.format("dddd");
+		let now = tz ? moment()
+			.tz(tz)
+			.diff(moment()
+				.tz(tz)
+				.startOf('day'), 'seconds') : moment()
+			.utc()
+			.diff(moment()
+				.utc()
+				.startOf('day'), 'seconds');
 		let sch = _.find(schedules, (piece) => {
 			return !!~_.indexOf(piece.has_day, day);
 		});
@@ -70,6 +79,7 @@ class Prebook {
 			p_date: plan.format("YYYY-MM-DD"),
 			day,
 			td,
+			now,
 			today: (booking.format("YYYY-MM-DD") === dedicated.format("YYYY-MM-DD"))
 		};
 	}
@@ -230,6 +240,7 @@ class Prebook {
 					d_date: pre.d_date,
 					b_date: pre.b_date,
 					p_date: pre.p_date,
+					expiry: time_description[0] + pre.org_merged.prebook_expiration_interval,
 					day: pre.day,
 					pin: this.emitter.addTask('code-registry', {
 						_action: 'make-pin',
@@ -255,6 +266,7 @@ class Prebook {
 				day,
 				priority_level,
 				pin,
+				expiry,
 				label
 			}) => {
 				let tick = {
@@ -267,7 +279,8 @@ class Prebook {
 					service: service_info.id,
 					label,
 					service_count,
-					state: ws.prebook_state || 'registered'
+					state: ws.prebook_state || 'registered',
+					expires: expiry
 				};
 				return this.iris.confirm({
 					operator: '*',
