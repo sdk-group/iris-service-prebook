@@ -252,7 +252,7 @@ class Prebook {
 					}),
 					label: this.emitter.addTask('code-registry', {
 						_action: 'make-label',
-						prefix: pre.org_merged.prebook_label_prefix + pre.srv.prefix,
+						prefix: (pre.org_merged.prebook_label_prefix || '') + pre.srv.prefix,
 						date: pre.p_date
 					})
 				});
