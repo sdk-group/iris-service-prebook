@@ -51,9 +51,9 @@ class Prebook {
 	getDates({
 		dedicated_date,
 		tz,
+		offset = 600,
 		schedules
 	}) {
-		// console.log("DD", dedicated_date, tz, schedules);
 		let dedicated = dedicated_date ? moment.utc(dedicated_date) : moment.utc();
 		let booking = moment.utc();
 		let plan = dedicated.clone();
@@ -72,7 +72,9 @@ class Prebook {
 			return !!~_.indexOf(piece.has_day, day);
 		});
 		let chunks = sch ? _.flatMap(sch.has_time_description, 'data.0') : [19 * 3600];
-		let td = [_.min(chunks), _.max(chunks)];
+		let today = (booking.format("YYYY-MM-DD") === dedicated.format("YYYY-MM-DD"));
+		let start = today ? now + offset : _.min(chunks);
+		let td = [start, _.max(chunks)];
 		return {
 			d_date: dedicated.format("YYYY-MM-DD"),
 			b_date: booking.format(),
@@ -80,7 +82,7 @@ class Prebook {
 			day,
 			td,
 			now,
-			today: (booking.format("YYYY-MM-DD") === dedicated.format("YYYY-MM-DD"))
+			today
 		};
 	}
 
@@ -132,6 +134,7 @@ class Prebook {
 						} = this.getDates({
 							dedicated_date,
 							tz: org_data.org_merged.org_timezone,
+							offset: org_data.org_merged.prebook_observe_offset,
 							schedules: org_data.org_merged.has_schedule.prebook
 						});
 						return {
@@ -185,6 +188,7 @@ class Prebook {
 				} = this.getDates({
 					dedicated_date,
 					tz: org_data.org_merged.org_timezone,
+					offset: org_data.org_merged.prebook_observe_offset,
 					schedules: org_data.org_merged.has_schedule.prebook
 				});
 				return {
@@ -505,7 +509,8 @@ class Prebook {
 							acc += (tick.time_description[1] - tick.time_description[0]);
 						return acc;
 					}, 0);
-					let part = (pre.today ? pre.srv.prebook_today_percentage : pre.srv.prebook_percentage) / 100;
+					let part = (pre.today ? pre.srv.prebook_today_percentage : pre.srv.prebook_percentage);
+					part = _.clamp(part, 0, 100) / 100;
 					let success = (plans * part >= (tick_length + pre.srv.prebook_operation_time));
 					acc[key] = {
 						success,
