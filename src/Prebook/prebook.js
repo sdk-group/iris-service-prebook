@@ -286,7 +286,7 @@ class Prebook {
 					label,
 					service_count,
 					state: ws.prebook_state || 'registered',
-					expires: expiry
+					called: 0
 				};
 				return this.iris.confirm({
 					operator: '*',
