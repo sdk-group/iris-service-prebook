@@ -14,12 +14,68 @@ class Prebook {
 		this.emitter = emitter;
 	}
 	init(config) {
-			this.iris = new BookingApi();
-			this.iris.initContent();
-			this.services = new ServiceApi();
-			this.services.initContent();
+		this.iris = new BookingApi();
+		this.iris.initContent();
+		this.services = new ServiceApi();
+		this.services.initContent();
+	}
+
+	launch() {
+			this.emitter.emit('taskrunner.add.task', {
+				now: 0,
+				time: 0,
+				task_name: "",
+				module_name: "prebook",
+				task_type: "add-task",
+				params: {
+					_action: "expiration-check"
+				}
+			});
+			return Promise.resolve(true);
 		}
 		//API
+
+	actionExpirationCheck({
+		ts_now
+	}) {
+		return this.getTickets({
+				query: {
+					state: ['booked']
+				}
+			})
+			.then((tickets) => {
+				let min_exp = ts_now;
+				let p = _.map(tickets, (tick) => {
+					min_exp = _.min([min_exp, tick.expiry]);
+					if (tick.expiry >= ts_now) {
+						return this.emitter.addTask("queue", {
+							_action: "ticket-expire",
+							ticket: tick.id,
+							auto: true
+						})
+					} else {
+						return Promise.resolve(tick);
+					}
+				});
+				this.emitter.emit('taskrunner.add.task', {
+					now: ts_now,
+					time: min_exp,
+					task_name: "",
+					module_name: "prebook",
+					task_type: "add-task",
+					params: {
+						_action: "expiration-check"
+					}
+				});
+				return Promise.all(p);
+			})
+			.catch((err) => {
+				console.log("EXPIRATION CHECK ERR", err.stack);
+				return false;
+			});
+	}
+
+
 	getTickets({
 		query,
 		keys
@@ -246,7 +302,8 @@ class Prebook {
 					d_date: pre.d_date,
 					b_date: pre.b_date,
 					p_date: pre.p_date,
-					expiry: time_description[0] + pre.org_merged.prebook_expiration_interval,
+					expiry: this.emitter.addTask("taskrunner.now")
+						.then((res) => (res + pre.org_merged.prebook_expiration_interval * 1000)),
 					day: pre.day,
 					pin: this.emitter.addTask('code-registry', {
 						_action: 'make-pin',
@@ -285,8 +342,9 @@ class Prebook {
 					service: service_info.id,
 					label,
 					service_count,
-					state: ws.prebook_state || 'registered',
-					called: 0
+					state: 'booked',
+					called: 0,
+					expiry
 				};
 				return this.iris.confirm({
 					operator: '*',
@@ -482,7 +540,7 @@ class Prebook {
 					query: {
 						dedicated_date: pre.d_date,
 						service: pre.srv.id,
-						state: pre.ws.prebook_state
+						state: pre.ws.prebook_autoregister ? 'registered' : 'booked'
 					}
 				}),
 				plans: this.iris.getAllPlansLength({
