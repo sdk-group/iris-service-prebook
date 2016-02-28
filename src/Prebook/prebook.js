@@ -29,6 +29,7 @@ class Prebook {
 				task_name: "",
 				module_name: "prebook",
 				task_id: "prebook-expiration-check",
+				regular: true,
 				task_type: "add-task",
 				params: {
 					_action: "expiration-check"
@@ -69,6 +70,7 @@ class Prebook {
 					module_name: "prebook",
 					task_type: "add-task",
 					task_id: "prebook-expiration-check",
+					regular: true,
 					params: {
 						_action: "expiration-check"
 					}
