@@ -18,7 +18,9 @@ class Prebook {
 		this.iris.initContent();
 		this.services = new ServiceApi();
 		this.services.initContent();
+		this.prebook_check_interval = config.prebook_check_interval || 5;
 	}
+
 
 	launch() {
 			this.emitter.emit('taskrunner.add.task', {
@@ -44,9 +46,10 @@ class Prebook {
 				}
 			})
 			.then((tickets) => {
-				let min_exp = ts_now;
+				let now = ts_now / 1000;
+				let min_exp = now + this.prebook_check_interval;
 				let p = _.map(tickets, (tick) => {
-					min_exp = _.min([min_exp, tick.expiry]);
+					min_exp = _.min([min_exp, tick.expiry / 1000]);
 					if (tick.expiry >= ts_now) {
 						return this.emitter.addTask("queue", {
 							_action: "ticket-expire",
@@ -57,8 +60,9 @@ class Prebook {
 						return Promise.resolve(tick);
 					}
 				});
+				console.log("PREBOOK SCH", min_exp, now, min_exp - now);
 				this.emitter.emit('taskrunner.add.task', {
-					now: ts_now,
+					now,
 					time: min_exp,
 					task_name: "",
 					module_name: "prebook",
