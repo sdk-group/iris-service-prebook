@@ -50,7 +50,7 @@ class Prebook {
 				let min_exp = now + this.prebook_check_interval;
 				let p = _.map(tickets, (tick) => {
 					min_exp = _.min([min_exp, tick.expiry / 1000]);
-					if (tick.expiry >= ts_now) {
+					if(tick.expiry >= ts_now) {
 						return this.emitter.addTask("queue", {
 							_action: "ticket-expire",
 							ticket: tick.id,
@@ -60,7 +60,7 @@ class Prebook {
 						return Promise.resolve(tick);
 					}
 				});
-				console.log("PREBOOK SCH", min_exp, now, min_exp - now);
+				// console.log("PREBOOK SCH", min_exp, now, min_exp - now);
 				this.emitter.emit('taskrunner.add.task', {
 					now,
 					time: min_exp,
@@ -567,7 +567,7 @@ class Prebook {
 					pre
 				}, key) => {
 					let tick_length = _.reduce(tickets, (acc, tick) => {
-						if (_.isArray(tick.time_description))
+						if(_.isArray(tick.time_description))
 							acc += (tick.time_description[1] - tick.time_description[0]);
 						return acc;
 					}, 0);
