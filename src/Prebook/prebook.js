@@ -28,6 +28,7 @@ class Prebook {
 				time: 0,
 				task_name: "",
 				module_name: "prebook",
+				task_id: "prebook_expiration_check",
 				task_type: "add-task",
 				params: {
 					_action: "expiration-check"
@@ -50,7 +51,7 @@ class Prebook {
 				let min_exp = now + this.prebook_check_interval;
 				let p = _.map(tickets, (tick) => {
 					min_exp = _.min([min_exp, tick.expiry / 1000]);
-					if(tick.expiry >= ts_now) {
+					if(tick.expiry <= ts_now) {
 						return this.emitter.addTask("queue", {
 							_action: "ticket-expire",
 							ticket: tick.id,
@@ -67,6 +68,7 @@ class Prebook {
 					task_name: "",
 					module_name: "prebook",
 					task_type: "add-task",
+					task_id: "prebook_expiration_check",
 					params: {
 						_action: "expiration-check"
 					}
