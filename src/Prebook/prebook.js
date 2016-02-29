@@ -51,7 +51,6 @@ class Prebook {
 				let now = ts_now / 1000;
 				let min_exp = now + this.prebook_check_interval;
 				let p = _.map(tickets, (tick) => {
-					min_exp = _.min([min_exp, tick.expiry / 1000]);
 					if(tick.expiry <= ts_now) {
 						return this.emitter.addTask("queue", {
 							_action: "ticket-expire",
