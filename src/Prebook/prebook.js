@@ -51,7 +51,7 @@ class Prebook {
 				let now = ts_now / 1000;
 				let min_exp = now + this.prebook_check_interval;
 				let p = _.map(tickets, (tick) => {
-					if(tick.expiry <= ts_now) {
+					if (tick.expiry <= ts_now) {
 						return this.emitter.addTask("queue", {
 							_action: "ticket-expire",
 							ticket: tick.id,
@@ -225,7 +225,8 @@ class Prebook {
 	preparePrebookProcessing({
 		workstation,
 		service,
-		dedicated_date
+		dedicated_date,
+		offset = true
 	}) {
 		return Promise.props({
 				org_data: this.actionWorkstationOrganizationData({
@@ -251,7 +252,7 @@ class Prebook {
 				} = this.getDates({
 					dedicated_date,
 					tz: org_data.org_merged.org_timezone,
-					offset: org_data.org_merged.prebook_observe_offset,
+					offset: (offset ? org_data.org_merged.prebook_observe_offset : 0),
 					schedules: org_data.org_merged.has_schedule.prebook
 				});
 				return {
@@ -289,7 +290,8 @@ class Prebook {
 		return this.preparePrebookProcessing({
 				workstation,
 				service,
-				dedicated_date
+				dedicated_date,
+				offset: false
 			})
 			.then((res) => {
 				let keyed = _.keyBy([res], 'p_date');
@@ -417,7 +419,8 @@ class Prebook {
 		return this.preparePrebookProcessing({
 				workstation,
 				service,
-				dedicated_date
+				dedicated_date,
+				offset: true
 			})
 			.then((res) => {
 				let keyed = _.keyBy([res], 'p_date');
@@ -570,7 +573,7 @@ class Prebook {
 					pre
 				}, key) => {
 					let tick_length = _.reduce(tickets, (acc, tick) => {
-						if(_.isArray(tick.time_description))
+						if (_.isArray(tick.time_description))
 							acc += (tick.time_description[1] - tick.time_description[0]);
 						return acc;
 					}, 0);
