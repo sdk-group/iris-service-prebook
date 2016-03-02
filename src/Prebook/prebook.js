@@ -416,6 +416,7 @@ class Prebook {
 		service_count = 1,
 		per_service = 100
 	}) {
+		let org;
 		return this.preparePrebookProcessing({
 				workstation,
 				service,
@@ -430,6 +431,7 @@ class Prebook {
 				let pre = _.sample(keyed);
 				let success = pre.success;
 				pre = pre.data;
+				org = pre.org_merged;
 				// console.log("OBSERVING PREBOOK II", pre);
 
 				return !success ? {} : this.iris.observe({
@@ -443,7 +445,7 @@ class Prebook {
 					local_date: pre.p_date,
 					day: pre.day,
 					method: 'prebook',
-					count: per_service,
+					count: pre.org_merged.prebook_observe_max_slots || per_service,
 					service_count
 				});
 			})
@@ -452,7 +454,10 @@ class Prebook {
 				// 	.inspect(res, {
 				// 		depth: null
 				// 	}));
-				let slots = _.values(res);
+				let uniq_interval = org.prebook_slot_uniq_interval || 60;
+				let slots = _.uniqWith(_.values(res), (arrVal, othVal) => {
+					return othVal.time_description[0] < arrVal.time_description[0] + uniq_interval;
+				});
 				return {
 					slots,
 					success: true
