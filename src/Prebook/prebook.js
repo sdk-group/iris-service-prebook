@@ -284,6 +284,7 @@ class Prebook {
 			workstation,
 			time_description
 		} = _.pick(fields, fnames);
+		service_count = (service_count > 0) ? service_count : 1;
 		let user_info = _.omit(fields, fnames);
 		let org;
 		let service_info;
@@ -455,8 +456,13 @@ class Prebook {
 				// 		depth: null
 				// 	}));
 				let uniq_interval = org.prebook_slot_uniq_interval || 60;
-				let slots = _.uniqWith(_.values(res), (arrVal, othVal) => {
-					return othVal.time_description[0] < arrVal.time_description[0] + uniq_interval;
+				let threshold = 0;
+				let slots = _.filter(_.values(res), (tick) => {
+					let eq = tick.time_description[0] < threshold;
+					if (!eq) {
+						threshold = tick.time_description[0] + uniq_interval;
+					}
+					return !eq;
 				});
 				return {
 					slots,
@@ -513,7 +519,8 @@ class Prebook {
 						day: pre.day,
 						method: 'prebook',
 						count: per_service,
-						service_count
+						service_count: (service_count > 0) ? service_count : 1;
+
 					});
 					return acc;
 				}, {});
