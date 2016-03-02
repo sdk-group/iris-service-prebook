@@ -519,7 +519,7 @@ class Prebook {
 						day: pre.day,
 						method: 'prebook',
 						count: per_service,
-						service_count: (service_count > 0) ? service_count : 1;
+						service_count: (service_count > 0 ? service_count : 1);
 
 					});
 					return acc;
