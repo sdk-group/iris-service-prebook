@@ -103,7 +103,7 @@ class Prebook {
 		workstation,
 		embed_schedules = false
 	}) {
-		return this.emitter.addTask('queue', {
+		return this.emitter.addTask('workstation', {
 			_action: 'workstation-organization-data',
 			workstation,
 			embed_schedules
@@ -156,6 +156,7 @@ class Prebook {
 		start = 0,
 		end
 	}) {
+		let time = process.hrtime();
 		return Promise.props({
 				org_data: this.actionWorkstationOrganizationData({
 					workstation,
@@ -169,6 +170,10 @@ class Prebook {
 				org_data,
 				srv
 			}) => {
+				let diff = process.hrtime(time);
+				console.log(' AVDAYS PREPROC took %d nanoseconds', diff[0] * 1e9 + diff[1]);
+				time = process.hrtime();
+
 				srv = _.find(srv, (t) => (t.id == service || t.key == service));
 				let d_start = moment.utc()
 					.add(srv.prebook_offset, 'days');
@@ -185,6 +190,11 @@ class Prebook {
 				let p_end = _.clamp(end, 0, dates.length - 1);
 				let done = (p_end == (dates.length - 1));
 				let days = _.slice(dates, p_start, p_end + 1);
+
+
+				diff = process.hrtime(time);
+				console.log(' AVDAYS DATES took %d nanoseconds', diff[0] * 1e9 + diff[1]);
+
 				return {
 					days: _.map(days, (dedicated_date) => {
 						let {
@@ -200,6 +210,7 @@ class Prebook {
 							offset: org_data.org_merged.prebook_observe_offset,
 							schedules: org_data.org_merged.has_schedule.prebook
 						});
+
 						return {
 							ws: org_data.ws,
 							org_addr: org_data.org_addr,
@@ -496,11 +507,16 @@ class Prebook {
 				end
 			})
 			.then((res) => {
+				// console.log("OBSERVING AVDAYS PREBOOK II", res);
 				let keyed = _.keyBy(res.days, 'p_date');
 				done = res.done;
 				return this.getValid(keyed);
 			})
 			.then((keyed) => {
+				// console.log("OBSERVING AVDAYS PREBOOK III", keyed);
+				let diff = process.hrtime(time);
+				console.log(' AVDAYS PREPARED IN %d nanoseconds', diff[0] * 1e9 + diff[1]);
+				time = process.hrtime();
 				let promises = _.reduce(keyed, (acc, val, key) => {
 					// console.log("OBSERVING PREBOOK II", pre);
 					let pre = val.data;
@@ -534,7 +550,7 @@ class Prebook {
 				// 	}));
 				let diff = process.hrtime(time);
 
-				console.log('took %d nanoseconds', diff[0] * 1e9 + diff[1]);
+				console.log('AVDAYS DONE IN  %d nanoseconds', diff[0] * 1e9 + diff[1]);
 				return {
 					success: true,
 					done,
