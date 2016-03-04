@@ -3,12 +3,14 @@
 let gulp = require("gulp");
 let babel = require("gulp-babel");
 let gutil = require("gulp-util");
-let del = require("del");
-let uglify = require("gulp-uglify");
-let minify = require("gulp-minify");
-
 let isProduction = () => {
 	return (gutil.env.type == "production") || process.env['NODE_ENV'] == 'production';
+}
+
+if (isProduction()) {
+	let del = require("del");
+	let uglify = require("gulp-uglify");
+	let minify = require("gulp-minify");
 }
 gulp.task("es6-js", function () {
 	let production = isProduction();
