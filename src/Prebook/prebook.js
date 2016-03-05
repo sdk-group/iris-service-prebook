@@ -48,6 +48,7 @@ class Prebook {
 				}
 			})
 			.then((tickets) => {
+				// console.log("TICKS", tickets);
 				let now = ts_now / 1000;
 				let min_exp = now + this.prebook_check_interval;
 				let p = _.map(tickets, (tick) => {
@@ -156,7 +157,6 @@ class Prebook {
 		start = 0,
 		end
 	}) {
-		let time = process.hrtime();
 		return Promise.props({
 				org_data: this.actionWorkstationOrganizationData({
 					workstation,
@@ -170,10 +170,6 @@ class Prebook {
 				org_data,
 				srv
 			}) => {
-				let diff = process.hrtime(time);
-				console.log(' AVDAYS PREPROC took %d nanoseconds', diff[0] * 1e9 + diff[1]);
-				time = process.hrtime();
-
 				srv = _.find(srv, (t) => (t.id == service || t.key == service));
 				let d_start = moment.utc()
 					.add(srv.prebook_offset, 'days');
@@ -190,10 +186,6 @@ class Prebook {
 				let p_end = _.clamp(end, 0, dates.length - 1);
 				let done = (p_end == (dates.length - 1));
 				let days = _.slice(dates, p_start, p_end + 1);
-
-
-				diff = process.hrtime(time);
-				console.log(' AVDAYS DATES took %d nanoseconds', diff[0] * 1e9 + diff[1]);
 
 				return {
 					days: _.map(days, (dedicated_date) => {
@@ -323,6 +315,7 @@ class Prebook {
 					d_date: pre.d_date,
 					b_date: pre.b_date,
 					p_date: pre.p_date,
+					organization: pre.org_merged.id,
 					expiry: this.emitter.addTask("taskrunner.now")
 						.then((res) => (res + pre.org_merged.prebook_expiration_interval * 1000)),
 					day: pre.day,
@@ -348,6 +341,7 @@ class Prebook {
 				b_date,
 				p_date,
 				day,
+				organization,
 				priority_level,
 				pin,
 				expiry,
@@ -372,6 +366,8 @@ class Prebook {
 					time_description: td,
 					dedicated_date: d_date,
 					local_date: p_date,
+					service_keys: this.services.service_ids_cache,
+					organization,
 					tick,
 					method: 'prebook',
 					day
@@ -452,6 +448,8 @@ class Prebook {
 						service: pre.srv.id,
 						time_description: pre.srv.prebook_operation_time
 					}],
+					service_keys: this.services.service_ids_cache,
+					organization: org.id,
 					time_description: pre.td,
 					dedicated_date: pre.d_date,
 					local_date: pre.p_date,
@@ -531,6 +529,8 @@ class Prebook {
 						}],
 						time_description: pre.td,
 						dedicated_date: pre.d_date,
+						service_keys: this.services.service_ids_cache,
+						organization: pre.org_merged.id,
 						local_date: pre.p_date,
 						day: pre.day,
 						method: 'prebook',
@@ -587,6 +587,8 @@ class Prebook {
 					day: pre.day,
 					local_date: pre.p_date,
 					time_description: pre.td,
+					service_keys: this.services.service_ids_cache,
+					organization: pre.org_merged.id,
 					method: 'live'
 				}),
 				pre
