@@ -15,7 +15,7 @@ class Prebook {
 		this.iris.initContent();
 		this.services = new ServiceApi();
 		this.services.initContent();
-		this.prebook_check_interval = config.prebook_check_interval || 5;
+		this.prebook_check_interval = config.prebook_check_interval || 60;
 	}
 	launch() {
 			this.emitter.emit('taskrunner.add.task', {
@@ -151,14 +151,14 @@ class Prebook {
 					embed_schedules: true
 				}),
 				srv: this.services.getService({
-					keys: service
-				})
+						keys: service
+					})
+					.then(res => res[service])
 			})
 			.then(({
 				org_data,
 				srv
 			}) => {
-				srv = _.find(srv, (t) => (t.id == service || t.key == service));
 				let d_start = moment.utc()
 					.add(srv.prebook_offset, 'days');
 				let d_end = d_start.clone()
@@ -175,31 +175,25 @@ class Prebook {
 				let days = _.slice(dates, p_start, p_end + 1);
 				return {
 					days: _.map(days, (dedicated_date) => {
-						let {
-							d_date,
-							b_date,
-							p_date,
-							td,
-							day,
-							today
-						} = this.getDates({
+						let dates = this.getDates({
 							dedicated_date,
 							tz: org_data.org_merged.org_timezone,
 							offset: org_data.org_merged.prebook_observe_offset,
 							schedules: org_data.org_merged.has_schedule.prebook
 						});
+
 						return {
 							ws: org_data.ws,
 							org_addr: org_data.org_addr,
 							org_merged: org_data.org_merged,
 							org_chain: org_data.org_chain,
 							srv,
-							d_date,
-							b_date,
-							p_date,
-							td,
-							day,
-							today
+							d_date: dates.d_date,
+							b_date: dates.b_date,
+							p_date: dates.p_date,
+							td: dates.td,
+							day: dates.day,
+							today: dates.today
 						};
 					}),
 					done
@@ -221,22 +215,15 @@ class Prebook {
 					embed_schedules: true
 				}),
 				srv: this.services.getService({
-					keys: service
-				})
+						keys: service
+					})
+					.then(res => res[service])
 			})
 			.then(({
 				org_data,
 				srv
 			}) => {
-				srv = _.find(srv, (t) => (t.id == service || t.key == service));
-				let {
-					d_date,
-					b_date,
-					p_date,
-					td,
-					day,
-					today
-				} = this.getDates({
+				let dates = this.getDates({
 					dedicated_date,
 					tz: org_data.org_merged.org_timezone,
 					offset: (offset ? org_data.org_merged.prebook_observe_offset : 0),
@@ -248,12 +235,13 @@ class Prebook {
 					org_merged: org_data.org_merged,
 					org_chain: org_data.org_chain,
 					srv,
-					d_date,
-					b_date,
-					p_date,
-					td,
-					day,
-					today
+					d_date: dates.d_date,
+					b_date: dates.b_date,
+					p_date: dates.p_date,
+					td: dates.td,
+					day: dates.day,
+					today: dates.today
+
 				};
 			})
 			.catch(err => {
@@ -326,7 +314,7 @@ class Prebook {
 					service_count,
 					state: 'booked',
 					called: 0,
-					destination: org.org_merged.id,
+					org_destination: org.org_merged.id,
 					expiry
 				};
 				return this.iris.confirm({
@@ -347,7 +335,7 @@ class Prebook {
 						type: 'terminal',
 						id: workstation
 					},
-					object: _.keys(res.placed),
+					object: _.map(res.placed, "@id"),
 					event_name: 'book',
 					reason: {}
 				});
@@ -364,7 +352,7 @@ class Prebook {
 				return Promise.props({
 					success: _.isEmpty(res.lost),
 					tickets: this.actionTicketCompleteData({
-						ticket: _.keys(res.placed),
+						ticket: _.map(res.placed, "@id"),
 						org_chain: org.org_chain,
 						service_info: org.srv
 					})
@@ -488,8 +476,8 @@ class Prebook {
 				console.log(' AVDAYS PREPARED IN %d nanoseconds', diff[0] * 1e9 + diff[1]);
 				time = process.hrtime();
 				let promises = _.reduce(keyed, (acc, val, key) => {
-					// console.log("OBSERVING PREBOOK II", pre);
 					let pre = val.data;
+					// console.log("OBSERVING PREBOOK II", pre);
 					let local_key = moment.utc(key)
 						.tz(pre.org_merged.org_timezone)
 						.format();
@@ -573,6 +561,7 @@ class Prebook {
 				old_cache = quota;
 				let promises = _.reduce(keyed, (acc, pre, key) => {
 					let today = _.get(quota, `${pre.org_merged.id}.${pre.srv.id}.${pre.p_date}`, false);
+					// console.log("QUOTA", key, today, `${pre.org_merged.id}.${pre.srv.id}.${pre.p_date}`);
 					acc[key] =
 						Promise.props({
 							reserved: today ? today.reserved : this.getTickets({
