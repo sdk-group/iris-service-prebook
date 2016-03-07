@@ -379,12 +379,14 @@ class Prebook {
 			office: org_chain
 		});
 	}
+
+
 	actionTicketObserve({
 		service,
 		dedicated_date,
 		workstation,
 		service_count = 1,
-		per_service = 100
+		per_service = 10000
 	}) {
 		let org;
 		return this.preparePrebookProcessing({
@@ -400,9 +402,10 @@ class Prebook {
 			.then((keyed) => {
 				let pre = _.sample(keyed);
 				let success = pre.success;
+				let count = pre.available / pre.data.srv.prebook_operation_time * service_count;
 				pre = pre.data;
+				// console.log("OBSERVING PREBOOK II", count, pre.org_merged.prebook_observe_max_slots || count);
 				org = pre.org_merged;
-				// console.log("OBSERVING PREBOOK II", pre);
 				return !success ? {} : this.iris.observe({
 					operator: '*',
 					services: [{
@@ -416,7 +419,7 @@ class Prebook {
 					local_date: pre.p_date,
 					day: pre.day,
 					method: 'prebook',
-					count: pre.org_merged.prebook_observe_max_slots || per_service,
+					count: pre.org_merged.prebook_observe_max_slots || count,
 					service_count
 				});
 			})
@@ -529,10 +532,10 @@ class Prebook {
 	}
 
 	updateServiceQuota(data) {
-		return data.transform ? this.mergeServiceQuota(data) : this.services.cacheServiceQuota(data);
+		return data.transform ? this.cacheServiceQuota(data) : this.services.cacheServiceQuota(data);
 	}
 
-	mergeServiceQuota({
+	cacheServiceQuota({
 		office,
 		service,
 		date,
@@ -554,54 +557,54 @@ class Prebook {
 			});
 	}
 
+	computeServiceQuota(preprocessed) {
+		return Promise.props({
+			reserved: this.getTickets({
+					query: {
+						dedicated_date: preprocessed.d_date,
+						service: preprocessed.srv.id,
+						state: preprocessed.ws.prebook_autoregister ? 'registered' : 'booked',
+						destination: preprocessed.org_merged.id
+					}
+				})
+				.then((tickets) => {
+					return _.reduce(tickets, (acc, tick) => {
+						if (_.isArray(tick.time_description))
+							acc += (tick.time_description[1] - tick.time_description[0]);
+						return acc;
+					}, 0);
+				}),
+			available: this.iris.getAllPlansLength({
+				operator: '*',
+				service: preprocessed.srv.id,
+				day: preprocessed.day,
+				local_date: preprocessed.p_date,
+				time_description: preprocessed.td,
+				service_keys: this.services.cache_service_ids,
+				organization: preprocessed.org_merged.id,
+				method: 'live'
+			})
+		});
+	}
+
 	getValid(keyed) {
 		let old_cache;
 		return this.services.getServiceQuota()
 			.then((quota) => {
 				old_cache = quota;
-				let promises = _.reduce(keyed, (acc, pre, key) => {
+				return Promise.props(_.mapValues(keyed, (pre, key) => {
 					let today = _.get(quota, `${pre.org_merged.id}.${pre.srv.id}.${pre.p_date}`, false);
 					// console.log("QUOTA", key, today, `${pre.org_merged.id}.${pre.srv.id}.${pre.p_date}`);
-					acc[key] =
-						Promise.props({
-							reserved: today ? today.reserved : this.getTickets({
-									query: {
-										dedicated_date: pre.d_date,
-										service: pre.srv.id,
-										state: pre.ws.prebook_autoregister ? 'registered' : 'booked',
-										destination: pre.org_merged.id
-									}
-								})
-								.then((tickets) => {
-									return _.reduce(tickets, (acc, tick) => {
-										if (_.isArray(tick.time_description))
-											acc += (tick.time_description[1] - tick.time_description[0]);
-										return acc;
-									}, 0);
-								}),
-							available: today ? today.available : this.iris.getAllPlansLength({
-								operator: '*',
-								service: pre.srv.id,
-								day: pre.day,
-								local_date: pre.p_date,
-								time_description: pre.td,
-								service_keys: this.services.cache_service_ids,
-								organization: pre.org_merged.id,
-								method: 'live'
-							}),
-							pre
-						});
-					return acc;
-				}, {});
-				return Promise.props(promises);
+					return today || this.computeServiceQuota(pre);
+				}));
 			})
-			.then((keyed) => {
+			.then((keyed_quota) => {
 				let cached = {};
-				let result = _.reduce(keyed, (acc, {
+				let result = _.reduce(keyed_quota, (acc, {
 					reserved,
-					available,
-					pre
+					available
 				}, key) => {
+					let pre = keyed[key];
 					let part = (pre.today ? pre.srv.prebook_today_percentage : pre.srv.prebook_percentage);
 					part = _.clamp(part, 0, 100) / 100;
 					let success = (available * part >= (reserved + pre.srv.prebook_operation_time));
@@ -614,6 +617,7 @@ class Prebook {
 					}
 					acc[key] = {
 						success,
+						available,
 						data: pre
 					};
 					// console.log("CHECKING", key, (tick_length + pre.srv.prebook_operation_time), plans * part, part);
