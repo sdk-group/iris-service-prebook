@@ -44,7 +44,6 @@ class Prebook {
 				}
 			})
 			.then((tickets) => {
-				// console.log("TICKS", tickets);
 				let now = ts_now / 1000;
 				let min_exp = now + this.prebook_check_interval;
 				let p = _.map(tickets, (tick) => {
@@ -108,35 +107,27 @@ class Prebook {
 		offset = 600,
 		schedules
 	}) {
-		let dedicated = dedicated_date ? moment.utc(dedicated_date) : moment.utc();
+		let dedicated = dedicated_date ? moment.tz(dedicated_date, tz) : moment.tz(tz);
 		let booking = moment.utc();
-		let plan = dedicated.clone();
-		plan.tz(tz);
-		let day = tz ? plan.format('dddd') : dedicated.format("dddd");
-		let now = tz ? moment()
+		let now = moment()
 			.tz(tz)
 			.diff(moment()
 				.tz(tz)
-				.startOf('day'), 'seconds') : moment()
-			.utc()
-			.diff(moment()
-				.utc()
 				.startOf('day'), 'seconds');
-		let sch = _.find(schedules, (piece) => {
-			return !!~_.indexOf(piece.has_day, day);
+		let sch = _.find(_.castArray(schedules), (piece) => {
+			return !!~_.indexOf(piece.has_day, dedicated.format('dddd'));
 		});
 		let chunks = sch ? _.flatMap(sch.has_time_description, 'data.0') : [19 * 3600];
-		let today = (booking.format("YYYY-MM-DD") === dedicated.format("YYYY-MM-DD"));
+		let p = dedicated.clone();
+		let today = (booking.format("YYYY-MM-DD") === p.utc()
+			.format("YYYY-MM-DD"));
 		let start = today ? now + offset : _.min(chunks);
 		let td = [start, _.max(chunks)];
 		return {
-			d_date: dedicated.format("YYYY-MM-DD"),
+			d_date: dedicated,
 			b_date: booking.format(),
-			p_date: plan.format("YYYY-MM-DD"),
-			day,
-			td,
-			now,
-			today
+			today,
+			td
 		};
 	}
 	prepareAvailableDaysProcessing({
@@ -159,15 +150,14 @@ class Prebook {
 				org_data,
 				srv
 			}) => {
-				let d_start = moment.utc()
+				let d_start = moment()
 					.add(srv.prebook_offset, 'days');
 				let d_end = d_start.clone()
-					.utc()
 					.add(srv.prebook_interval, 'days');
 				let dates = [];
 				moment.range(d_start, d_end)
 					.by('days', (d) => {
-						dates.push(d.format());
+						dates.push(d);
 					});
 				let p_start = _.clamp(start, 0, dates.length - 1);
 				let p_end = _.clamp(end, 0, dates.length - 1);
@@ -190,9 +180,7 @@ class Prebook {
 							srv,
 							d_date: dates.d_date,
 							b_date: dates.b_date,
-							p_date: dates.p_date,
 							td: dates.td,
-							day: dates.day,
 							today: dates.today
 						};
 					}),
@@ -237,9 +225,7 @@ class Prebook {
 					srv,
 					d_date: dates.d_date,
 					b_date: dates.b_date,
-					p_date: dates.p_date,
 					td: dates.td,
-					day: dates.day,
 					today: dates.today
 
 				};
@@ -268,19 +254,19 @@ class Prebook {
 				offset: false
 			})
 			.then((res) => {
-				let keyed = _.keyBy([res], 'p_date');
-				return this.getValid(keyed);
+				return this.getValid(res);
 			})
 			.then((keyed) => {
-				let pre = _.sample(keyed)
-					.data;
+				let pre = keyed[0].data;
 				// console.log("CONFIRMING PREBOOK II", pre, fields);
 				org = pre;
 				let prefix = _.join([pre.org_merged.prebook_label_prefix, pre.srv.prefix], '');
 				prefix = !_.isEmpty(prefix) && prefix;
+				let diff = pre.d_date.diff(moment.tz(pre.org_merged.org_timezone)) + pre.org_merged.prebook_expiration_interval * 1000 + time_description[0] * 1000;
+				// console.log("DIFF", diff, pre.org_merged.org_timezone, pre.d_date.diff(moment.tz(pre.org_merged.org_timezone)), pre.org_merged.prebook_expiration_interval * 1000, time_description[0] * 1000, pre.d_date.format());
 				return Promise.props({
 					expiry: this.emitter.addTask("taskrunner.now")
-						.then((res) => (res + pre.org_merged.prebook_expiration_interval * 1000)),
+						.then((res) => (res + diff)),
 					pin: this.emitter.addTask('code-registry', {
 						_action: 'make-pin',
 						prefix: pre.org_merged.pin_code_prefix
@@ -292,7 +278,7 @@ class Prebook {
 					label: this.emitter.addTask('code-registry', {
 						_action: 'make-label',
 						prefix,
-						date: pre.p_date
+						date: pre.d_date
 					})
 				});
 			})
@@ -302,6 +288,7 @@ class Prebook {
 				expiry,
 				label
 			}) => {
+				console.log("EXPIRES IN", expiry);
 				let tick = {
 					dedicated_date: org.d_date,
 					booking_date: org.b_date,
@@ -321,12 +308,10 @@ class Prebook {
 					operator: '*',
 					time_description: org.td,
 					dedicated_date: org.d_date,
-					local_date: org.p_date,
 					service_keys: this.services.cache_service_ids,
 					organization: org.org_merged.id,
 					tick,
-					method: 'prebook',
-					day: org.day
+					method: 'prebook'
 				});
 			})
 			.then((res) => {
@@ -340,14 +325,8 @@ class Prebook {
 					reason: {}
 				});
 				this.emitter.emit("prebook.save.service.quota", {
-					transform: true,
-					office: org.org_merged.id,
-					service: org.srv.id,
-					date: org.p_date,
-					transform: {
-						diff: time_description[1] - time_description[0],
-						increment: true
-					}
+					preprocessed: org,
+					reset: true
 				});
 				return Promise.props({
 					success: _.isEmpty(res.lost),
@@ -396,11 +375,10 @@ class Prebook {
 				offset: true
 			})
 			.then((res) => {
-				let keyed = _.keyBy([res], 'p_date');
-				return this.getValid(keyed);
+				return this.getValid(res);
 			})
 			.then((keyed) => {
-				let pre = _.sample(keyed);
+				let pre = keyed[0];
 				let success = pre.success;
 				let count = pre.available / pre.data.srv.prebook_operation_time * service_count;
 				pre = pre.data;
@@ -416,8 +394,6 @@ class Prebook {
 					organization: org.id,
 					time_description: pre.td,
 					dedicated_date: pre.d_date,
-					local_date: pre.p_date,
-					day: pre.day,
 					method: 'prebook',
 					count: pre.org_merged.prebook_observe_max_slots || count,
 					service_count
@@ -469,37 +445,19 @@ class Prebook {
 			})
 			.then((res) => {
 				// console.log("OBSERVING AVDAYS PREBOOK II", res);
-				let keyed = _.keyBy(res.days, 'p_date');
 				done = res.done;
-				return this.getValid(keyed);
+				return this.getValid(res.days, true);
 			})
-			.then((keyed) => {
+			.then((days) => {
 				// console.log("OBSERVING AVDAYS PREBOOK III", keyed);
 				let diff = process.hrtime(time);
 				console.log(' AVDAYS PREPARED IN %d nanoseconds', diff[0] * 1e9 + diff[1]);
 				time = process.hrtime();
-				let promises = _.reduce(keyed, (acc, val, key) => {
+				let promises = _.reduce(days, (acc, val, key) => {
 					let pre = val.data;
-					// console.log("OBSERVING PREBOOK II", pre);
-					let local_key = moment.utc(key)
-						.tz(pre.org_merged.org_timezone)
-						.format();
-					acc[local_key] = !val.success ? {} : this.iris.observe({
-						operator: '*',
-						services: [{
-							service: pre.srv.id,
-							time_description: pre.srv.prebook_operation_time
-						}],
-						time_description: pre.td,
-						dedicated_date: pre.d_date,
-						service_keys: this.services.cache_service_ids,
-						organization: pre.org_merged.id,
-						local_date: pre.p_date,
-						day: pre.day,
-						method: 'prebook',
-						count: per_service,
-						service_count: (service_count > 0 ? service_count : 1)
-					});
+					// console.log("OBSERVING PREBOOK II", val, pre.srv.prebook_operation_time * (service_count || 1));
+					let local_key = pre.d_date.format();
+					acc[local_key] = val.success && (val.solid > pre.srv.prebook_operation_time * (service_count || 1));
 					return acc;
 				}, {});
 				return Promise.props(promises);
@@ -516,7 +474,7 @@ class Prebook {
 					done,
 					days: _.map(res, (day_data, day) => {
 						return {
-							is_available: !_.isEmpty(_.values(day_data)),
+							is_available: day_data,
 							date: day
 						};
 					})
@@ -532,98 +490,90 @@ class Prebook {
 	}
 
 	updateServiceQuota(data) {
-		return data.transform ? this.cacheServiceQuota(data) : this.services.cacheServiceQuota(data);
+		return data.reset ? this.cacheServiceQuota(data) : this.services.cacheServiceQuota(data);
 	}
 
 	cacheServiceQuota({
-		office,
-		service,
-		date,
-		transform
+		preprocessed,
+		reset = false
 	}) {
-		return this.services.getServiceQuota()
+		let new_quota;
+		return this.computeServiceQuota(preprocessed)
+			.then((res) => {
+				new_quota = res;
+				return this.services.getServiceQuota()
+			})
 			.then((quota) => {
-				let new_data = _.get(quota, `${office}.${service}.${date}`);
-				let diff = transform.diff || 0;
-				if (transform.increment) {
-					new_data.available = new_data.available - diff;
-					new_data.reserved = new_data.reserved + diff;
-				} else {
-					new_data.available = new_data.available + diff;
-					new_data.reserved = new_data.reserved - diff;
-				}
-				_.set(quota, `${office}.${service}.${date}`, new_data);
-				return this.services.cacheServiceQuota(quota);
+				// console.log("NEW QUOTA", new_quota[preprocessed.org_merged.id][preprocessed.srv.id]);
+				return this.services.cacheServiceQuota(_.merge(quota, new_quota));
 			});
 	}
 
 	computeServiceQuota(preprocessed) {
-		return Promise.props({
-			reserved: this.getTickets({
-					query: {
-						dedicated_date: preprocessed.d_date,
-						service: preprocessed.srv.id,
-						state: preprocessed.ws.prebook_autoregister ? 'registered' : 'booked',
-						destination: preprocessed.org_merged.id
-					}
-				})
-				.then((tickets) => {
-					return _.reduce(tickets, (acc, tick) => {
-						if (_.isArray(tick.time_description))
-							acc += (tick.time_description[1] - tick.time_description[0]);
-						return acc;
-					}, 0);
-				}),
-			available: this.iris.getAllPlansLength({
+		return this.iris.confirm({
 				operator: '*',
-				service: preprocessed.srv.id,
-				day: preprocessed.day,
-				local_date: preprocessed.p_date,
 				time_description: preprocessed.td,
+				dedicated_date: preprocessed.d_date,
 				service_keys: this.services.cache_service_ids,
 				organization: preprocessed.org_merged.id,
-				method: 'live'
+				method: 'live',
+				quota_status: true
 			})
-		});
+			.then((res) => {
+				return res.stats;
+			});
 	}
 
-	getValid(keyed) {
-		let old_cache;
+	getValid(data, replace = false) {
+		let days = _.castArray(data);
+		let org = days[0].org_merged.id;
+		let srv = days[0].srv.id;
 		return this.services.getServiceQuota()
 			.then((quota) => {
-				old_cache = quota;
-				return Promise.props(_.mapValues(keyed, (pre, key) => {
-					let today = _.get(quota, `${pre.org_merged.id}.${pre.srv.id}.${pre.p_date}`, false);
-					// console.log("QUOTA", key, today, `${pre.org_merged.id}.${pre.srv.id}.${pre.p_date}`);
-					return today || this.computeServiceQuota(pre);
-				}));
+				let days_missing = _.filter(days, (pre) => {
+					return !_.has(quota, `${org}.${srv}.${pre.d_date.format("YYYY-MM-DD")}`);
+				});
+				return _.isEmpty(days_missing) ? quota : Promise.map(days_missing, (pre) => {
+						return this.computeServiceQuota(pre);
+					})
+					.then((md) => {
+						// console.log("COMPUTED", res)
+						return _.reduce(md, (acc, res, index) => {
+							let pre = days_missing[index];
+							if (_.isEmpty(res)) {
+								_.set(acc, `${org}.${srv}.${pre.d_date.format("YYYY-MM-DD")}`, {
+									available: 0,
+									reserved: 0,
+									max_solid: 0
+								});
+								return acc;
+							}
+							return _.merge(acc, res);
+						}, quota);
+					});
 			})
-			.then((keyed_quota) => {
-				let cached = {};
-				let result = _.reduce(keyed_quota, (acc, {
-					reserved,
-					available
-				}, key) => {
-					let pre = keyed[key];
+			.then((days_quota) => {
+				// console.log("QUOTA", days_quota);
+				let preserve = [];
+				let result = _.map(days, (pre) => {
 					let part = (pre.today ? pre.srv.prebook_today_percentage : pre.srv.prebook_percentage);
 					part = _.clamp(part, 0, 100) / 100;
-					let success = (available * part >= (reserved + pre.srv.prebook_operation_time));
-					if (success) {
-						//only for the first time; dynamic cache creation
-						_.set(cached, `${pre.org_merged.id}.${pre.srv.id}.${pre.p_date}`, {
-							available,
-							reserved
-						});
-					}
-					acc[key] = {
+					let date = pre.d_date.format("YYYY-MM-DD");
+					preserve.push(date);
+					let stats = _.get(days_quota, `${org}.${srv}.${date}`);
+					let success = (stats.available * part >= (stats.reserved + pre.srv.prebook_operation_time));
+					return {
 						success,
-						available,
+						available: stats.available,
+						solid: stats.max_solid,
 						data: pre
 					};
-					// console.log("CHECKING", key, (tick_length + pre.srv.prebook_operation_time), plans * part, part);
-					return acc;
-				}, {});
-				this.emitter.emit("prebook.save.service.quota", _.merge(old_cache, cached));
+				});
+				let new_quota = days_quota;
+				if (replace)
+					_.set(new_quota, `${org}.${srv}`, _.pick(_.get(days_quota, `${org}.${srv}`), preserve));
+				// console.log("CHECKING", preserve, result, new_quota[org][srv]);
+				this.emitter.emit("prebook.save.service.quota", new_quota);
 				return result;
 			});
 	}
