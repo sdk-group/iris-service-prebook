@@ -244,17 +244,33 @@ class Prebook {
 			workstation,
 			time_description
 		} = _.pick(fields, fnames);
-		service_count = (service_count > 0) ? service_count : 1;
 		let user_info = _.omit(fields, fnames);
+		let event_name = 'book';
 		let org;
-		return this.preparePrebookProcessing({
-				workstation,
-				service,
-				dedicated_date,
-				offset: false
+		let hst;
+		return Promise.props({
+				pre: this.preparePrebookProcessing({
+					workstation,
+					service,
+					dedicated_date,
+					offset: false
+				}),
+				history: this.emitter.addTask('history', {
+					_action: 'make-entry',
+					subject: {
+						type: 'terminal',
+						id: workstation
+					},
+					event_name,
+					reason: {}
+				})
 			})
-			.then((res) => {
-				return this.getValid(res);
+			.then(({
+				pre,
+				history
+			}) => {
+				hst = history;
+				return this.getValid(pre);
 			})
 			.then((keyed) => {
 				let pre = keyed[0].data;
@@ -278,7 +294,7 @@ class Prebook {
 					label: this.emitter.addTask('code-registry', {
 						_action: 'make-label',
 						prefix,
-						date: pre.d_date
+						date: pre.d_date.format("YYYY-MM-DD")
 					})
 				});
 			})
@@ -298,7 +314,8 @@ class Prebook {
 					user_info,
 					service: org.srv.id,
 					label,
-					service_count,
+					history: [hst],
+					service_count: service_count || 1,
 					state: 'booked',
 					called: 0,
 					org_destination: org.org_merged.id,
@@ -308,22 +325,13 @@ class Prebook {
 					operator: '*',
 					time_description: org.td,
 					dedicated_date: org.d_date,
-					service_keys: this.services.cache_service_ids,
+					service_keys: this.services.startpoint.cache_service_ids,
 					organization: org.org_merged.id,
 					tick,
 					method: 'prebook'
 				});
 			})
 			.then((res) => {
-				this.emitter.emit('history.log', {
-					subject: {
-						type: 'terminal',
-						id: workstation
-					},
-					object: _.map(res.placed, "@id"),
-					event_name: 'book',
-					reason: {}
-				});
 				this.emitter.emit("prebook.save.service.quota", {
 					preprocessed: org,
 					reset: true
@@ -368,6 +376,7 @@ class Prebook {
 		per_service = 10000
 	}) {
 		let org;
+		let time = process.hrtime();
 		return this.preparePrebookProcessing({
 				workstation,
 				service,
@@ -378,9 +387,14 @@ class Prebook {
 				return this.getValid(res);
 			})
 			.then((keyed) => {
+				let diff = process.hrtime(time);
+				console.log('PRE OBSERVE PREPARED IN %d nanoseconds', diff[0] * 1e9 + diff[1]);
+				time = process.hrtime();
+
 				let pre = keyed[0];
 				let success = pre.success;
 				let count = pre.available / pre.data.srv.prebook_operation_time * service_count;
+				console.log("PRE TICK COUNT", count);
 				pre = pre.data;
 				// console.log("OBSERVING PREBOOK II", count, pre.org_merged.prebook_observe_max_slots || count);
 				org = pre.org_merged;
@@ -390,7 +404,7 @@ class Prebook {
 						service: pre.srv.id,
 						time_description: pre.srv.prebook_operation_time
 					}],
-					service_keys: this.services.cache_service_ids,
+					service_keys: this.services.startpoint.cache_service_ids,
 					organization: org.id,
 					time_description: pre.td,
 					dedicated_date: pre.d_date,
@@ -404,6 +418,8 @@ class Prebook {
 				// 	.inspect(res, {
 				// 		depth: null
 				// 	}));
+				let diff = process.hrtime(time);
+				console.log('PRE OBSERVE DONE IN  %d nanoseconds', diff[0] * 1e9 + diff[1]);
 				let uniq_interval = org.prebook_slot_uniq_interval || 60;
 				let threshold = 0;
 				let slots = _.filter(_.values(res), (tick) => {
@@ -514,7 +530,7 @@ class Prebook {
 				operator: '*',
 				time_description: preprocessed.td,
 				dedicated_date: preprocessed.d_date,
-				service_keys: this.services.cache_service_ids,
+				service_keys: this.services.startpoint.cache_service_ids,
 				organization: preprocessed.org_merged.id,
 				method: 'live',
 				quota_status: true
@@ -553,13 +569,13 @@ class Prebook {
 					});
 			})
 			.then((days_quota) => {
-				// console.log("QUOTA", days_quota);
 				let preserve = [];
 				let result = _.map(days, (pre) => {
 					let part = (pre.today ? pre.srv.prebook_today_percentage : pre.srv.prebook_percentage);
 					part = _.clamp(part, 0, 100) / 100;
 					let date = pre.d_date.format("YYYY-MM-DD");
 					preserve.push(date);
+					// console.log("QUOTA", days_quota[org][srv]);
 					let stats = _.get(days_quota, `${org}.${srv}.${date}`);
 					let success = (stats.available * part >= (stats.reserved + pre.srv.prebook_operation_time));
 					return {
