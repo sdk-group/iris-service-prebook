@@ -96,10 +96,14 @@ class Prebook {
 		embed_schedules = false
 	}) {
 		return this.emitter.addTask('workstation', {
-			_action: 'workstation-organization-data',
-			workstation,
-			embed_schedules
-		});
+				_action: 'workstation-organization-data',
+				workstation,
+				embed_schedules
+			})
+			.then(res => res[workstation])
+			.catch(err => {
+				console.log("PB WSOD ERR", err.stack);
+			});
 	}
 	getDates({
 		dedicated_date,
@@ -248,6 +252,7 @@ class Prebook {
 		let event_name = 'book';
 		let org;
 		let hst;
+		let b_priority;
 		return Promise.props({
 				pre: this.preparePrebookProcessing({
 					workstation,
@@ -263,33 +268,48 @@ class Prebook {
 					},
 					event_name,
 					reason: {}
+				}),
+				basic_priority: this.emitter.addTask('ticket', {
+					_action: 'basic-priorities'
 				})
 			})
 			.then(({
+				basic_priority,
 				pre,
 				history
 			}) => {
 				hst = history;
+				b_priority = basic_priority;
 				return this.getValid(pre);
 			})
 			.then((keyed) => {
 				let pre = keyed[0].data;
-				// console.log("CONFIRMING PREBOOK II", pre, fields);
 				org = pre;
-				let prefix = _.join([pre.org_merged.prebook_label_prefix, pre.srv.prefix], '');
-				prefix = !_.isEmpty(prefix) && prefix;
+
 				let diff = pre.d_date.diff(moment.tz(pre.org_merged.org_timezone)) + pre.org_merged.prebook_expiration_interval * 1000 + time_description[0] * 1000;
-				// console.log("DIFF", diff, pre.org_merged.org_timezone, pre.d_date.diff(moment.tz(pre.org_merged.org_timezone)), pre.org_merged.prebook_expiration_interval * 1000, time_description[0] * 1000, pre.d_date.format());
+
+				let prior_keys = _.keys(priority);
+				let basic = _.mapValues(_.pick(b_priority, prior_keys), v => v.params);
+				let local = _.pick(org.org_merged.priority_description || {}, prior_keys);
+				let computed_priority = _.merge(basic, local, priority);
+
+				let prior_prefix = _.join(_.sortedUniq(_.sortBy(_.map(computed_priority, "prefix"))), '');
+				let prefix = _.join([pre.org_merged.prebook_label_prefix, prior_prefix, pre.srv.prefix], '');
+				prefix = !_.isEmpty(prefix) && prefix;
+
+				if (org.srv.priority > 0)
+					computed_priority['service'] = {
+						value: org.srv.priority
+					};
+				//+manual_up / manual_down
+
 				return Promise.props({
+					computed_priority,
 					expiry: this.emitter.addTask("taskrunner.now")
 						.then((res) => (res + diff)),
 					pin: this.emitter.addTask('code-registry', {
 						_action: 'make-pin',
 						prefix: pre.org_merged.pin_code_prefix
-					}),
-					priority_level: this.emitter.addTask('ticket', {
-						_action: 'compute-priority',
-						priority
 					}),
 					label: this.emitter.addTask('code-registry', {
 						_action: 'make-label',
@@ -299,17 +319,16 @@ class Prebook {
 				});
 			})
 			.then(({
-				priority_level,
+				computed_priority,
 				pin,
 				expiry,
 				label
 			}) => {
-				console.log("EXPIRES IN", expiry);
 				let tick = {
 					dedicated_date: org.d_date,
 					booking_date: org.b_date,
 					time_description,
-					priority: priority_level,
+					priority: computed_priority,
 					code: pin,
 					user_info,
 					service: org.srv.id,
@@ -393,7 +412,7 @@ class Prebook {
 
 				let pre = keyed[0];
 				let success = pre.success;
-				let count = pre.available / pre.data.srv.prebook_operation_time * service_count;
+				let count = pre.available / (pre.data.srv.prebook_operation_time * service_count);
 				console.log("PRE TICK COUNT", count);
 				pre = pre.data;
 				// console.log("OBSERVING PREBOOK II", count, pre.org_merged.prebook_observe_max_slots || count);
@@ -586,8 +605,8 @@ class Prebook {
 					};
 				});
 				let new_quota = days_quota;
-				if (replace)
-					_.set(new_quota, `${org}.${srv}`, _.pick(_.get(days_quota, `${org}.${srv}`), preserve));
+				// if (replace)
+				// 	_.set(new_quota, `${org}.${srv}`, _.pick(_.get(days_quota, `${org}.${srv}`), preserve));
 				// console.log("CHECKING", preserve, result, new_quota[org][srv]);
 				this.emitter.emit("prebook.save.service.quota", new_quota);
 				return result;
