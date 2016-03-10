@@ -253,6 +253,7 @@ class Prebook {
 		let org;
 		let hst;
 		let b_priority;
+		let s_count = _.parseInt(service_count) || 1;
 		return Promise.props({
 				pre: this.preparePrebookProcessing({
 					workstation,
@@ -334,7 +335,7 @@ class Prebook {
 					service: org.srv.id,
 					label,
 					history: [hst],
-					service_count: service_count || 1,
+					service_count: s_count,
 					state: 'booked',
 					called: 0,
 					org_destination: org.org_merged.id,
@@ -395,6 +396,7 @@ class Prebook {
 		per_service = 10000
 	}) {
 		let org;
+		let s_count = _.parseInt(service_count) || 1;
 		let time = process.hrtime();
 		return this.preparePrebookProcessing({
 				workstation,
@@ -412,7 +414,7 @@ class Prebook {
 
 				let pre = keyed[0];
 				let success = pre.success;
-				let count = pre.available / (pre.data.srv.prebook_operation_time * service_count);
+				let count = pre.available / (pre.data.srv.prebook_operation_time * s_count);
 				console.log("PRE TICK COUNT", count);
 				pre = pre.data;
 				// console.log("OBSERVING PREBOOK II", count, pre.org_merged.prebook_observe_max_slots || count);
@@ -429,7 +431,7 @@ class Prebook {
 					dedicated_date: pre.d_date,
 					method: 'prebook',
 					count: pre.org_merged.prebook_observe_max_slots || count,
-					service_count
+					service_count: s_count
 				});
 			})
 			.then((res) => {
@@ -472,6 +474,7 @@ class Prebook {
 		let done;
 		let time = process.hrtime();
 		// console.log("OBSERVING AVDAYS PREBOOK", service, workstation, start, end);
+		let s_count = _.parseInt(service_count) || 1;
 		return this.prepareAvailableDaysProcessing({
 				workstation,
 				service,
@@ -490,9 +493,9 @@ class Prebook {
 				time = process.hrtime();
 				let promises = _.reduce(days, (acc, val, key) => {
 					let pre = val.data;
-					// console.log("OBSERVING PREBOOK II", val, pre.srv.prebook_operation_time * (service_count || 1));
+					// console.log("OBSERVING PREBOOK II", val, pre.srv.prebook_operation_time * (_.parseInt(service_count) || 1));
 					let local_key = pre.d_date.format();
-					acc[local_key] = val.success && (val.solid > pre.srv.prebook_operation_time * (service_count || 1));
+					acc[local_key] = val.success && (val.solid > pre.srv.prebook_operation_time * s_count);
 					return acc;
 				}, {});
 				return Promise.props(promises);
