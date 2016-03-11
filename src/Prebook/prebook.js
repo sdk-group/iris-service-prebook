@@ -354,11 +354,10 @@ class Prebook {
 				});
 				return Promise.props({
 					success: _.isEmpty(res.lost),
-					tickets: this.actionTicketCompleteData({
-						ticket: _.map(res.placed, "@id"),
-						org_chain: org.org_chain,
-						service_info: org.srv
-					})
+					ticket: this.getTickets({
+							keys: _.map(res.placed, "@id")
+						})
+						.then(res => res[0])
 				});
 			})
 			.catch((err) => {
@@ -369,20 +368,6 @@ class Prebook {
 				};
 			});
 	}
-	actionTicketCompleteData({
-		ticket,
-		org_chain,
-		service_info
-	}) {
-		return Promise.props({
-			ticket: this.getTickets({
-				keys: ticket
-			}, true),
-			service: service_info,
-			office: org_chain
-		});
-	}
-
 
 	actionTicketObserve({
 		service,
@@ -580,7 +565,10 @@ class Prebook {
 						return this.computeServiceQuota(pre);
 					})
 					.then((md) => {
-						// console.log("COMPUTED", res)
+						// console.log("MISSING", require('util')
+						// 	.inspect(md, {
+						// 		depth: null
+						// 	}));
 						return _.reduce(md, (acc, res, index) => {
 							let pre = days_missing[index];
 							if (_.isEmpty(res)) {
@@ -596,13 +584,13 @@ class Prebook {
 					});
 			})
 			.then((days_quota) => {
+				// console.log("QUOTA", days_quota);
 				let preserve = [];
 				let result = _.map(days, (pre) => {
 					let part = (pre.today ? pre.srv.prebook_today_percentage : pre.srv.prebook_percentage);
 					part = _.clamp(part, 0, 100) / 100;
 					let date = pre.d_date.format("YYYY-MM-DD");
 					preserve.push(date);
-					// console.log("QUOTA", days_quota[org][srv]);
 					let stats = _.get(days_quota, `${org}.${srv}.${date}`);
 					let success = (stats.available * part >= (stats.reserved + pre.srv.prebook_operation_time));
 					return {
