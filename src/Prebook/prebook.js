@@ -32,6 +32,7 @@ class Prebook {
 			});
 
 			this.emitter.on('prebook.save.service.quota', (data) => this.updateServiceQuota(data));
+			this.emitter.on('prebook.save.service.slots', (data) => this.updateServiceSlots(data));
 			return Promise.resolve(true);
 		}
 		//API
@@ -521,6 +522,47 @@ class Prebook {
 		return data.reset ? this.cacheServiceQuota(data) : this.services.cacheServiceQuota(data);
 	}
 
+	updateServiceSlots(data) {
+		return data.reset ? this.cacheServiceSlots(data) : this.services.cacheServiceSlots(data);
+	}
+
+	cacheServiceSlots({
+		preprocessed,
+		reset = false
+	}) {
+		let new_slots;
+		return this.computeServiceSlots(preprocessed)
+			.then((res) => {
+				new_slots = res;
+				return this.iris.ticket_api.getServiceSlotsCache()
+			})
+			.then((slots) => {
+				// console.log("NEW QUOTA", new_quota[preprocessed.org_merged.id][preprocessed.srv.id]);
+				return this.iris.ticket_api.cacheServiceSlots(_.merge(slots, new_slots));
+			});
+	}
+
+	computeServiceSlots(preprocessed, count, s_count) {
+		return this.iris.observe({
+				operator: '*',
+				services: [{
+					service: preprocessed.srv.id,
+					time_description: preprocessed.srv.prebook_operation_time
+				}],
+				time_description: preprocessed.td,
+				dedicated_date: preprocessed.d_date,
+				service_keys: this.services.startpoint.cache_service_ids,
+				organization: preprocessed.org_merged.id,
+				count: preprocessed.org_merged.prebook_observe_max_slots || count,
+				service_count: s_count,
+				method: 'prebook'
+			})
+			.then((res) => {
+				_.set({}, `${preprocessed.org_merged.id}.${preprocessed.srv.id}.${preprocessed.d_date.format("YYYY-MM-DD")}`, res.placed);
+				return;
+			});
+	}
+
 	cacheServiceQuota({
 		preprocessed,
 		reset = false
@@ -536,6 +578,7 @@ class Prebook {
 				return this.services.cacheServiceQuota(_.merge(quota, new_quota));
 			});
 	}
+
 
 	computeServiceQuota(preprocessed) {
 		return this.iris.confirm({
