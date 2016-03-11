@@ -270,6 +270,8 @@ class Prebook {
 				history
 			}) => {
 				hst = history;
+				hst.local_time = moment.tz(pre.org_merged.org_timezone)
+					.format('x');
 				b_priority = basic_priority;
 				return this.getValid(pre);
 			})
