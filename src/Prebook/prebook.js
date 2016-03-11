@@ -101,8 +101,8 @@ class Prebook {
 		offset = 600,
 		schedules
 	}) {
-		let dedicated = dedicated_date ? moment.tz(dedicated_date, tz) : moment.tz(tz);
-		dedicated.startOf('day');
+		let dedicated = dedicated_date ? moment(dedicated_date)
+			.tz(tz) : moment.tz(tz);
 		let booking = moment.utc();
 		let now = moment()
 			.tz(tz)
@@ -112,12 +112,11 @@ class Prebook {
 		let sch = _.find(_.castArray(schedules), (piece) => {
 			return !!~_.indexOf(piece.has_day, dedicated.format('dddd'));
 		});
-		let chunks = sch ? _.flatMap(sch.has_time_description, 'data.0') : [19 * 3600];
-		let p = dedicated.clone();
-		let today = (booking.format("YYYY-MM-DD") === p.utc()
-			.format("YYYY-MM-DD"));
+		let chunks = sch ? _.flatMap(sch.has_time_description, 'data.0') : [86400];
+		let today = booking.isSame(dedicated, 'day');
 		let start = today ? now + offset : _.min(chunks);
 		let td = [start, _.max(chunks)];
+		// console.log("DATES", dedicated_date, dedicated.format(), booking.format(), start, today);
 		return {
 			d_date: dedicated,
 			b_date: booking.format(),
@@ -279,6 +278,7 @@ class Prebook {
 				org = pre;
 
 				let diff = pre.d_date.clone()
+					.startOf('day')
 					.add(time_description[0], 'seconds')
 					.diff(moment.tz(pre.org_merged.org_timezone)) + pre.org_merged.prebook_expiration_interval * 1000;
 				// console.log("EXPIRES IN", diff);
