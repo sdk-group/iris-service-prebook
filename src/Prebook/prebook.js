@@ -38,29 +38,19 @@ class Prebook {
 	actionExpirationCheck({
 		ts_now
 	}) {
-		return this.getTickets({
-				query: {
-					state: ['booked']
-				}
-			})
+		return this.iris.ticket_api.getExpiredTickets(ts_now)
 			.then((tickets) => {
-				let now = ts_now / 1000;
-				let min_exp = now + this.prebook_check_interval;
-				let p = _.map(tickets, (tick) => {
-					if (tick.expiry <= ts_now) {
-						return this.emitter.addTask("queue", {
-							_action: "ticket-expire",
-							ticket: tick.id,
-							auto: true
-						})
-					} else {
-						return Promise.resolve(tick);
-					}
+				// console.log("TICKS TO EXPIRE", tickets);
+				let p = _.map(tickets, (ticket) => {
+					return this.emitter.addTask("queue", {
+						_action: "ticket-expire",
+						ticket,
+						auto: true
+					});
 				});
-				// console.log("PREBOOK SCH", min_exp, now, min_exp - now);
 				this.emitter.emit('taskrunner.add.task', {
-					now,
-					time: min_exp,
+					now: 0,
+					time: this.prebook_check_interval,
 					task_name: "",
 					module_name: "prebook",
 					task_type: "add-task",
@@ -112,6 +102,7 @@ class Prebook {
 		schedules
 	}) {
 		let dedicated = dedicated_date ? moment.tz(dedicated_date, tz) : moment.tz(tz);
+		dedicated.startOf('day');
 		let booking = moment.utc();
 		let now = moment()
 			.tz(tz)
@@ -287,8 +278,10 @@ class Prebook {
 				let pre = keyed[0].data;
 				org = pre;
 
-				let diff = pre.d_date.diff(moment.tz(pre.org_merged.org_timezone)) + pre.org_merged.prebook_expiration_interval * 1000 + time_description[0] * 1000;
-
+				let diff = pre.d_date.clone()
+					.add(time_description[0], 'seconds')
+					.diff(moment.tz(pre.org_merged.org_timezone)) + pre.org_merged.prebook_expiration_interval * 1000;
+				// console.log("EXPIRES IN", diff);
 				let prior_keys = _.keys(priority);
 				let basic = _.mapValues(_.pick(b_priority, prior_keys), v => v.params);
 				let local = _.pick(org.org_merged.priority_description || {}, prior_keys);
@@ -325,6 +318,7 @@ class Prebook {
 				expiry,
 				label
 			}) => {
+				// console.log("EXPIRES IN ||", expiry);
 				let tick = {
 					dedicated_date: org.d_date,
 					booking_date: org.b_date,
@@ -414,7 +408,7 @@ class Prebook {
 
 				let pre = keyed[0];
 				let success = pre.success;
-				let count = pre.available / (pre.data.srv.prebook_operation_time * s_count);
+				let count = _.round(pre.available / (pre.data.srv.prebook_operation_time * s_count));
 				console.log("PRE TICK COUNT", count);
 				pre = pre.data;
 				// console.log("OBSERVING PREBOOK II", count, pre.org_merged.prebook_observe_max_slots || count);
@@ -450,6 +444,14 @@ class Prebook {
 					}
 					return !eq;
 				});
+				slots = _.map(slots, (slot) => {
+					slot.dedicated_date = _.isString(slot.dedicated_date) ? slot.dedicated_date : slot.dedicated_date.format("YYYY-MM-DD");
+					return slot;
+				});
+				// console.log("SLOTS", require('util')
+				// 	.inspect(slots, {
+				// 		depth: null
+				// 	}));
 				return {
 					slots,
 					success: true
@@ -483,8 +485,9 @@ class Prebook {
 			})
 			.then((res) => {
 				// console.log("OBSERVING AVDAYS PREBOOK II", res);
+				let replace = _.parseInt(start) == 0;
 				done = res.done;
-				return this.getValid(res.days, true);
+				return this.getValid(res.days, replace);
 			})
 			.then((days) => {
 				// console.log("OBSERVING AVDAYS PREBOOK III", keyed);
@@ -569,7 +572,7 @@ class Prebook {
 		return this.services.getServiceQuota()
 			.then((quota) => {
 				let days_missing = _.filter(days, (pre) => {
-					return !_.has(quota, `${org}.${srv}.${pre.d_date.format("YYYY-MM-DD")}`);
+					return !_.has(quota, `${org}.${srv}.${pre.d_date.format("YYYY-MM-DD")}`) /*|| !_.get(quota, `${org}.${srv}.${pre.d_date.format("YYYY-MM-DD")}.available`) || !_.get(quota, `${org}.${srv}.${pre.d_date.format("YYYY-MM-DD")}.solid` )*/ ;
 				});
 				return _.isEmpty(days_missing) ? quota : Promise.map(days_missing, (pre) => {
 						return this.computeServiceQuota(pre);
