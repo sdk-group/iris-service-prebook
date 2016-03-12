@@ -246,6 +246,7 @@ class Prebook {
 		let b_priority;
 		let s_count = _.parseInt(service_count) || 1;
 		let count = 1;
+		let context = {};
 		return Promise.props({
 				pre: this.preparePrebookProcessing({
 					workstation,
@@ -362,12 +363,15 @@ class Prebook {
 					s_count,
 					reset: true
 				});
+				// console.log("CONFIRMING", res);
+
 				return Promise.props({
 					success: _.isEmpty(res.lost),
 					ticket: this.getTickets({
 							keys: _.map(res.placed, "@id")
 						})
-						.then(res => res[0])
+						.then(res => res[0]),
+					context
 				});
 			})
 			.catch((err) => {
@@ -407,7 +411,7 @@ class Prebook {
 				let success = pre.success;
 				let count = _.round(pre.available / (pre.data.srv.prebook_operation_time * s_count));
 				org = pre.data;
-				// console.log("OBSERVING PREBOOK II", count, pre.org_merged.prebook_observe_max_slots || count);
+				console.log("OBSERVING PREBOOK II", count, pre.available, org.org_merged.prebook_observe_max_slots || count);
 				return !success ? {} : this.getServiceSlots({
 					preprocessed: org,
 					count,
@@ -515,8 +519,8 @@ class Prebook {
 				// console.log("KEY", key, preprocessed.today);
 				return _.has(res, key) && !preprocessed.today ? Promise.resolve(res) : this.computeServiceSlots({
 						preprocessed,
-						count,
-						s_count
+						count: count * s_count,
+						s_count: 1
 					})
 					.then((computed) => {
 						_.set(res, key, _.map(computed, 'time_description') || []);
@@ -535,6 +539,7 @@ class Prebook {
 						time_description: t
 					};
 				});
+				// console.log("ALL SLOTS", count, _.get(cache, key, []));
 				let uniq_interval = preprocessed.org_merged.prebook_slot_uniq_interval || 60;
 				let threshold = 0;
 				let slots = _.filter(all_slots, (tick) => {
@@ -544,7 +549,28 @@ class Prebook {
 					}
 					return !eq;
 				});
-				return slots;
+				if (s_count == 1)
+					return slots;
+				// console.log("SLOTS", slots);
+				let solid_slots = [];
+				let curr_cnt = 0;
+				_.map(_.sortBy(slots, 'time_description.0'), (slot, index, all) => {
+					if (curr_cnt < s_count - 1) {
+						if (all[index + 1].time_description[0] == slot.time_description[1]) {
+							curr_cnt++;
+						} else {
+							curr_cnt = 0;
+						}
+					} else {
+						let start = all[index - s_count + 1].time_description[0];
+						solid_slots.push({
+							time_description: [start, slot.time_description[1]]
+						});
+						curr_cnt = 0;
+					}
+				});
+				// console.log("SOLID SLOTS", solid_slots);
+				return solid_slots;
 			});
 	}
 
@@ -562,15 +588,18 @@ class Prebook {
 		return this.computeServiceSlots({
 				preprocessed,
 				count,
-				s_count
+				s_count: 1
 			})
 			.then((res) => {
 				new_slots = _.map(res, 'time_description');
 				return this.iris.ticket_api.getServiceSlotsCache();
 			})
 			.then((slots) => {
-				// console.log("NEW SLOTS", slots);
-				_.set(slots, `${preprocessed.org_merged.id}.${ preprocessed.org_merged.id}.${preprocessed.d_date.format("YYYY-MM-DD")}`, new_slots);
+				// console.log("NEW SLOTS", require('util')
+				// 	.inspect(slots, {
+				// 		depth: null
+				// 	}));
+				_.set(slots, `${preprocessed.org_merged.id}.${preprocessed.srv.id}.${preprocessed.d_date.format("YYYY-MM-DD")}`, new_slots);
 
 				slots = _.mapValues(slots, (val, org) => {
 					return _.mapValues(val, (dates, srv) => {
@@ -599,7 +628,7 @@ class Prebook {
 				dedicated_date: preprocessed.d_date,
 				service_keys: this.services.startpoint.cache_service_ids,
 				organization: preprocessed.org_merged.id,
-				count: preprocessed.org_merged.prebook_observe_max_slots || count,
+				count,
 				service_count: s_count,
 				method: 'prebook'
 			})
@@ -678,6 +707,7 @@ class Prebook {
 					let date = pre.d_date.format("YYYY-MM-DD");
 					preserve.push(date);
 					let stats = _.get(days_quota, `${org}.${srv}.${date}`);
+					// console.log("STATS", stats);
 					let success = (stats.available * part >= (stats.reserved + pre.srv.prebook_operation_time));
 					return {
 						success,
