@@ -245,6 +245,7 @@ class Prebook {
 		let hst;
 		let b_priority;
 		let s_count = _.parseInt(service_count) || 1;
+		let count = 1;
 		return Promise.props({
 				pre: this.preparePrebookProcessing({
 					workstation,
@@ -277,13 +278,15 @@ class Prebook {
 				return this.getValid(pre);
 			})
 			.then((keyed) => {
-				let pre = keyed[0].data;
-				org = pre;
+				let pre = keyed[0];
+				let success = pre.success;
+				count = _.round(pre.available / (pre.data.srv.prebook_operation_time * s_count));
+				org = pre.data;
 
-				let diff = pre.d_date.clone()
+				let diff = org.d_date.clone()
 					.startOf('day')
 					.add(time_description[0], 'seconds')
-					.diff(moment.tz(pre.org_merged.org_timezone)) + pre.org_merged.prebook_expiration_interval * 1000;
+					.diff(moment.tz(org.org_merged.org_timezone)) + org.org_merged.prebook_expiration_interval * 1000;
 				// console.log("EXPIRES IN", diff);
 				let prior_keys = _.keys(priority);
 				let basic = _.mapValues(_.pick(b_priority, prior_keys), v => v.params);
@@ -291,7 +294,7 @@ class Prebook {
 				let computed_priority = _.merge(basic, local, priority);
 
 				let prior_prefix = _.join(_.sortedUniq(_.sortBy(_.map(computed_priority, "prefix"))), '');
-				let prefix = _.join([pre.org_merged.prebook_label_prefix, prior_prefix, pre.srv.prefix], '');
+				let prefix = _.join([org.org_merged.prebook_label_prefix, prior_prefix, org.srv.prefix], '');
 				prefix = !_.isEmpty(prefix) && prefix;
 
 				if (org.srv.priority > 0)
@@ -306,12 +309,12 @@ class Prebook {
 						.then((res) => (res + diff)),
 					pin: this.emitter.addTask('code-registry', {
 						_action: 'make-pin',
-						prefix: pre.org_merged.pin_code_prefix
+						prefix: org.org_merged.pin_code_prefix
 					}),
 					label: this.emitter.addTask('code-registry', {
 						_action: 'make-label',
 						prefix,
-						date: pre.d_date.format("YYYY-MM-DD")
+						date: org.d_date.format("YYYY-MM-DD")
 					})
 				});
 			})
@@ -351,6 +354,12 @@ class Prebook {
 			.then((res) => {
 				this.emitter.emit("prebook.save.service.quota", {
 					preprocessed: org,
+					reset: true
+				});
+				this.emitter.emit("prebook.save.service.slots", {
+					preprocessed: org,
+					count,
+					s_count,
 					reset: true
 				});
 				return Promise.props({
@@ -412,26 +421,9 @@ class Prebook {
 				// 	}));
 				let diff = process.hrtime(time);
 				console.log('PRE OBSERVE DONE IN  %d nanoseconds', diff[0] * 1e9 + diff[1]);
-				let uniq_interval = org.org_merged.prebook_slot_uniq_interval || 60;
-				let threshold = 0;
-				let slots = _.filter(_.values(res), (tick) => {
-					let eq = tick.time_description[0] < threshold;
-					if (!eq) {
-						threshold = tick.time_description[0] + uniq_interval;
-					}
-					return !eq;
-				});
-				slots = _.map(slots, (slot) => {
-					slot.dedicated_date = _.isString(slot.dedicated_date) ? slot.dedicated_date : slot.dedicated_date.format("YYYY-MM-DD");
-					return slot;
-				});
-				// console.log("SLOTS", require('util')
-				// 	.inspect(slots, {
-				// 		depth: null
-				// 	}));
 				return {
-					slots,
-					success: true
+					slots: res,
+					success: !!_.size(res)
 				};
 			})
 			.catch((err) => {
@@ -516,11 +508,48 @@ class Prebook {
 		count,
 		s_count
 	}) {
+		let key = `${preprocessed.org_merged.id}.${preprocessed.srv.id}.${preprocessed.d_date.format("YYYY-MM-DD")}`;
+		return this.iris.ticket_api.getServiceSlotsCache()
+			.then((res) => {
+				res = res || {};
+				// console.log("KEY", key, preprocessed.today);
+				return _.has(res, key) && !preprocessed.today ? Promise.resolve(res) : this.computeServiceSlots({
+						preprocessed,
+						count,
+						s_count
+					})
+					.then((computed) => {
+						_.set(res, key, _.map(computed, 'time_description') || []);
+						return res;
+					});
+			})
+			.then((cache) => {
+				// console.log("SLOTS CACHE", require('util')
+				// 	.inspect(cache, {
+				// 		depth: null
+				// 	}));
 
+				this.emitter.emit("prebook.save.service.slots", cache);
+				let all_slots = _.map(_.get(cache, key, []), t => {
+					return {
+						time_description: t
+					};
+				});
+				let uniq_interval = preprocessed.org_merged.prebook_slot_uniq_interval || 60;
+				let threshold = 0;
+				let slots = _.filter(all_slots, (tick) => {
+					let eq = tick.time_description[0] < threshold;
+					if (!eq) {
+						threshold = tick.time_description[0] + uniq_interval;
+					}
+					return !eq;
+				});
+				return slots;
+			});
 	}
 
 	updateServiceSlots(data) {
-		return data.reset ? this.cacheServiceSlots(data) : this.services.cacheServiceSlots(data);
+		return data.reset ? this.cacheServiceSlots(data) : this.iris.ticket_api.cacheServiceSlots(data);
 	}
 
 	cacheServiceSlots({
@@ -530,18 +559,36 @@ class Prebook {
 		reset = false
 	}) {
 		let new_slots;
-		return this.computeServiceSlots(preprocessed, count, s_count)
+		return this.computeServiceSlots({
+				preprocessed,
+				count,
+				s_count
+			})
 			.then((res) => {
-				new_slots = res;
-				return this.iris.ticket_api.getServiceSlotsCache()
+				new_slots = _.map(res, 'time_description');
+				return this.iris.ticket_api.getServiceSlotsCache();
 			})
 			.then((slots) => {
-				// console.log("NEW QUOTA", new_quota[preprocessed.org_merged.id][preprocessed.srv.id]);
-				return this.iris.ticket_api.cacheServiceSlots(_.merge(slots, new_slots));
+				// console.log("NEW SLOTS", slots);
+				_.set(slots, `${preprocessed.org_merged.id}.${ preprocessed.org_merged.id}.${preprocessed.d_date.format("YYYY-MM-DD")}`, new_slots);
+
+				slots = _.mapValues(slots, (val, org) => {
+					return _.mapValues(val, (dates, srv) => {
+						return _.pickBy(dates, (data, day) => {
+							return moment.tz(day, preprocessed.org_merged.org_timezone)
+								.isAfter(moment.tz(preprocessed.org_merged.org_timezone), 'day');
+						});
+					});
+				});
+				return this.iris.ticket_api.cacheServiceSlots(slots);
 			});
 	}
 
-	computeServiceSlots(preprocessed, count, s_count) {
+	computeServiceSlots({
+		preprocessed,
+		count,
+		s_count
+	}) {
 		return this.iris.observe({
 				operator: '*',
 				services: [{
@@ -556,24 +603,7 @@ class Prebook {
 				service_count: s_count,
 				method: 'prebook'
 			})
-			.then((res) => {
-				let uniq_interval = preprocessed.org_merged.prebook_slot_uniq_interval || 60;
-				let threshold = 0;
-				let slots = _.filter(_.values(res), (tick) => {
-					let eq = tick.time_description[0] < threshold;
-					if (!eq) {
-						threshold = tick.time_description[0] + uniq_interval;
-					}
-					return !eq;
-				});
-				slots = _.map(slots, (slot) => {
-					slot.dedicated_date = _.isString(slot.dedicated_date) ? slot.dedicated_date : slot.dedicated_date.format("YYYY-MM-DD");
-					return slot;
-				});
-				let new_slots = {};
-				_.set(new_slots, `${preprocessed.org_merged.id}.${preprocessed.srv.id}.${preprocessed.d_date.format("YYYY-MM-DD")}`, slots);
-				return new_slots;
-			});
+			.then(res => _.values(res));
 	}
 
 	cacheServiceQuota({
@@ -584,7 +614,7 @@ class Prebook {
 		return this.computeServiceQuota(preprocessed)
 			.then((res) => {
 				new_quota = res;
-				return this.services.getServiceQuota()
+				return this.services.getServiceQuota();
 			})
 			.then((quota) => {
 				// console.log("NEW QUOTA", new_quota[preprocessed.org_merged.id][preprocessed.srv.id]);
@@ -615,16 +645,16 @@ class Prebook {
 		return this.services.getServiceQuota()
 			.then((quota) => {
 				let days_missing = _.filter(days, (pre) => {
-					return !_.has(quota, `${org}.${srv}.${pre.d_date.format("YYYY-MM-DD")}`) || pre.today; /*|| !_.get(quota, `${org}.${srv}.${pre.d_date.format("YYYY-MM-DD")}.available`) || !_.get(quota, `${org}.${srv}.${pre.d_date.format("YYYY-MM-DD")}.solid` )*/ ;
+					return !_.has(quota, `${org}.${srv}.${pre.d_date.format("YYYY-MM-DD")}`) || pre.today; ///*|| !_.get(quota, `${org}.${srv}.${pre.d_date.format("YYYY-MM-DD")}.available`) || !_.get(quota, `${org}.${srv}.${pre.d_date.format("YYYY-MM-DD")}.solid` )*/ ;
 				});
 				return _.isEmpty(days_missing) ? quota : Promise.map(days_missing, (pre) => {
 						return this.computeServiceQuota(pre);
 					})
 					.then((md) => {
-						console.log("MISSING", require('util')
-							.inspect(md, {
-								depth: null
-							}));
+						// console.log("MISSING", require('util')
+						// 	.inspect(md, {
+						// 		depth: null
+						// 	}));
 						return _.reduce(md, (acc, res, index) => {
 							let pre = days_missing[index];
 							if (_.isEmpty(res)) {
@@ -657,23 +687,19 @@ class Prebook {
 					};
 				});
 				let new_quota = days_quota;
-				console.log(require('util')
-					.inspect(new_quota[org][srv], {
-						depth: null
-					}));
 				if (replace) {
 					let all = _.keys(_.get(days_quota, `${org}.${srv}`));
 					let min = _.minBy(days, day => day.d_date.format('x'));
 					_.set(new_quota, `${org}.${srv}`, _.pickBy(_.get(days_quota, `${org}.${srv}`), (data, day) => {
 						return moment.tz(day, min.org_merged.org_timezone)
-							.isSameOrAfter(moment(min.d_date), 'day') || !!~_.indexOf(preserve, day);
+							.isAfter(moment(min.d_date), 'day') || !!~_.indexOf(preserve, day);
 					}));
 				}
-				console.log("CHECKING", preserve);
-				console.log(require('util')
-					.inspect(new_quota[org][srv], {
-						depth: null
-					}));
+				// console.log("CHECKING", preserve);
+				// console.log(require('util')
+				// 	.inspect(new_quota[org][srv], {
+				// 		depth: null
+				// 	}));
 				this.emitter.emit("prebook.save.service.quota", new_quota);
 				return result;
 			});
