@@ -276,7 +276,7 @@ class Prebook {
 				hst.local_time = moment.tz(pre.org_merged.org_timezone)
 					.format('x');
 				b_priority = basic_priority;
-				return this.getValid(pre);
+				return this.actionGetStats(pre);
 			})
 			.then((keyed) => {
 				let pre = keyed[0];
@@ -400,7 +400,7 @@ class Prebook {
 				offset: true
 			})
 			.then((res) => {
-				return this.getValid(res);
+				return this.actionGetStats(res);
 			})
 			.then((keyed) => {
 				let diff = process.hrtime(time);
@@ -460,7 +460,7 @@ class Prebook {
 				// console.log("OBSERVING AVDAYS PREBOOK II", res);
 				let replace = _.parseInt(start) == 0;
 				done = res.done;
-				return this.getValid(res.days, replace);
+				return this.actionGetStats(res.days, replace);
 			})
 			.then((days) => {
 				// console.log("OBSERVING AVDAYS PREBOOK III", keyed);
@@ -501,6 +501,120 @@ class Prebook {
 					reason: err.message
 				};
 			});
+	}
+
+	actionWarmupDaysCache({
+		workstation,
+		start,
+		end
+	}) {
+		let time = process.hrtime();
+		let days;
+		let quo;
+		return this.services.lockQuota()
+			.then((res) => {
+				// console.log("RES Q C", res);
+				if (!res)
+					return Promise.reject(new Error("Quota is locked."));
+				return this.actionWorkstationOrganizationData({
+					workstation,
+					embed_schedules: true
+				});
+			})
+			.then((org_data) => {
+				let d_start = moment()
+					.add(start, 'days');
+				let d_end = d_start.clone()
+					.add(end, 'days');
+				let dates = [];
+				moment.range(d_start, d_end)
+					.by('days', (d) => {
+						dates.push(d);
+					});
+				return _.map(dates, (dedicated_date) => {
+					let dates = this.getDates({
+						dedicated_date,
+						tz: org_data.org_merged.org_timezone,
+						offset: org_data.org_merged.prebook_observe_offset,
+						schedules: org_data.org_merged.has_schedule.prebook
+					});
+
+					return {
+						ws: org_data.ws,
+						org_addr: org_data.org_addr,
+						org_merged: org_data.org_merged,
+						org_chain: org_data.org_chain,
+						d_date: dates.d_date,
+						b_date: dates.b_date,
+						td: dates.td,
+						today: dates.today
+					};
+				});
+			})
+			.then(data => {
+				days = _.castArray(data);
+				return this.services.getServiceQuota();
+			})
+			.then((quota) => {
+				quo = quota;
+				let days_ex = _.uniq(_.flattenDeep(_.map(quota, (org, org_id) => _.map(org, (s, s_id) => _.keys(s)))));
+				let days_missing = _.filter(days, (pre) => {
+					return !~_.indexOf(days_ex, pre.d_date.format("YYYY-MM-DD")) || pre.today;
+				});
+				// console.log("DAYS EX", days_ex);
+
+				return Promise.mapSeries(days_missing, (pre) => {
+					return this.computeServiceQuota(pre);
+				});
+			})
+			.then((res) => {
+				let min = _.minBy(days, day => day.d_date.format('x'));
+
+				let days_quota = _.reduce(res, (acc, val) => {
+					return _.merge(acc, val);
+				}, quo);
+				// console.log(require('util')
+				// 	.inspect(days_quota, {
+				// 		depth: null
+				// 	}));
+				days_quota = _.mapValues(days_quota, (org_q, org_id) => {
+					return _.mapValues(org_q, (srv_q, srv_id) => {
+						return _.pickBy(_.mapValues(srv_q, (date_q, date) => {
+							return _.defaultsDeep(date_q, {
+								available: {
+									live: 0,
+									prebook: 0
+								},
+								reserved: 0,
+								max_solid: {
+									live: 0,
+									prebook: 0
+								}
+							});
+						}), (data, day) => {
+							// console.log("ISAFTER", day, moment.tz(day, min.org_merged.org_timezone)
+							// 	.isAfter(moment.tz(min.org_merged.org_timezone)));
+							return moment.tz(day, min.org_merged.org_timezone)
+								.isAfter(moment.tz(min.org_merged.org_timezone), 'day');
+						});
+					});
+				});
+
+				// console.log(require('util')
+				// 	.inspect(days_quota, {
+				// 		depth: null
+				// 	}));
+				let diff = process.hrtime(time);
+				console.log('AVDAYS CACHE WARMUP %d nanoseconds', diff[0] * 1e9 + diff[1]);
+
+				this.emitter.emit("prebook.save.service.quota", days_quota);
+				return this.services.unlockQuota();
+			})
+			.catch(err => {
+				console.log("WARMUP FAILED", err.message);
+				return Promise.reject(new Error("Warmup."));
+			});
+
 	}
 
 	updateServiceQuota(data) {
@@ -677,12 +791,12 @@ class Prebook {
 				});
 			})
 			.then((res) => {
-				// console.log("QUOT", _.merge(quota, res.stats));
+				// console.log("QUOT", quota, res);
 				return _.merge(quota, res.stats);
 			});
 	}
 
-	getValid(data, replace = false) {
+	actionGetStats(data, replace = false) {
 		let days = _.castArray(data);
 		let org = days[0].org_merged.id;
 		let srv = days[0].srv.id;
@@ -694,6 +808,8 @@ class Prebook {
 				});
 				return _.isEmpty(days_missing) ? quota : Promise.map(days_missing, (pre) => {
 						return this.computeServiceQuota(pre);
+					}, {
+						concurrency: 5
 					})
 					.then((md) => {
 						// console.log("MISSING", require('util')
