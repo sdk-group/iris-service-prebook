@@ -469,9 +469,9 @@ class Prebook {
 				time = process.hrtime();
 				let promises = _.reduce(days, (acc, val, key) => {
 					let pre = val.data;
-					// console.log("OBSERVING PREBOOK II", val, pre.srv.prebook_operation_time * (_.parseInt(service_count) || 1));
+					console.log("OBSERVING PREBOOK II", val.solid, s_count, (val.solid.prebook >= pre.srv.prebook_operation_time * s_count));
 					let local_key = pre.d_date.format();
-					acc[local_key] = val.success && val.solid.prebook && (val.solid.prebook > pre.srv.prebook_operation_time * s_count);
+					acc[local_key] = val.success && val.solid.prebook && (val.solid.prebook >= pre.srv.prebook_operation_time * s_count);
 					return acc;
 				}, {});
 				return Promise.props(promises);
@@ -654,38 +654,52 @@ class Prebook {
 						time_description: t
 					};
 				});
-				// console.log("ALL SLOTS",all_slots);
+
+				let solid_slots = [];
+				let curr = [];
+				let all = _.round(_.size(all_slots) / s_count);
+				// console.log("ALL SLOTS", all_slots, all);
+
+				for (var i = 0; i < all; i++) {
+					if (_.size(all_slots) < s_count)
+						break;
+					curr = [_.head(all_slots)];
+					all_slots = _.tail(all_slots);
+					// console.log("SZ ALL", _.size(all_slots), curr);
+					for (var j = 0; j < s_count - 1; j++) {
+						let last = _.last(curr);
+						let next = _.findIndex(all_slots, t => (t.time_description[0] == last.time_description[1]));
+						// console.log("NXT", last, next, !!~next, j, curr, _.size(curr));
+						if (!!~next)
+							curr = _.concat(curr, _.pullAt(all_slots, next));
+						else
+							break;
+					}
+					// console.log("AAAAAA", _.size(curr), s_count);
+					if (_.size(curr) == s_count) {
+						// console.log("PUSHING");
+						solid_slots.push({
+							time_description: [_.head(curr)
+							.time_description[0],
+							_.last(curr)
+							.time_description[1]]
+						});
+					}
+				}
+
+
+				console.log("SOLID SLOTS", solid_slots);
 				let uniq_interval = preprocessed.org_merged.prebook_slot_uniq_interval || 60;
 				let threshold = 0;
-				let slots = _.filter(all_slots, (tick) => {
+				let slots = _.filter(solid_slots, (tick) => {
 					let eq = tick.time_description[0] < threshold;
 					if (!eq) {
 						threshold = tick.time_description[0] + uniq_interval;
 					}
 					return !eq;
 				});
-				if (s_count == 1)
-					return slots;
-				// console.log("SLOTS", slots);
-				let solid_slots = [];
-				let curr_cnt = 0;
-				_.map(_.sortBy(slots, 'time_description.0'), (slot, index, all) => {
-					if (curr_cnt < s_count - 1) {
-						if (all[index + 1] && (all[index + 1].time_description[0] == slot.time_description[1])) {
-							curr_cnt++;
-						} else {
-							curr_cnt = 0;
-						}
-					} else {
-						let start = all[index - s_count + 1].time_description[0];
-						solid_slots.push({
-							time_description: [start, slot.time_description[1]]
-						});
-						curr_cnt = 0;
-					}
-				});
-				// console.log("SOLID SLOTS", solid_slots);
-				return solid_slots;
+				console.log("UNIQ SLOTS", slots);
+				return slots;
 			});
 	}
 
