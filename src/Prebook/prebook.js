@@ -658,7 +658,7 @@ class Prebook {
 				let solid_slots = [];
 				let curr = [];
 				let all = _.round(_.size(all_slots) / s_count);
-				// console.log("ALL SLOTS", all_slots, all);
+				console.log("ALL SLOTS", all_slots, all);
 
 				for (var i = 0; i < all; i++) {
 					if (_.size(all_slots) < s_count)
@@ -688,7 +688,7 @@ class Prebook {
 				}
 
 
-				// console.log("SOLID SLOTS", solid_slots);
+				console.log("SOLID SLOTS", solid_slots);
 				let uniq_interval = preprocessed.org_merged.prebook_slot_uniq_interval || 60;
 				let threshold = 0;
 				let slots = _.filter(solid_slots, (tick) => {
@@ -698,7 +698,7 @@ class Prebook {
 					}
 					return !eq;
 				});
-				// console.log("UNIQ SLOTS", slots);
+				console.log("UNIQ SLOTS", slots);
 				return slots;
 			});
 	}
@@ -728,16 +728,16 @@ class Prebook {
 				// 	.inspect(slots, {
 				// 		depth: null
 				// 	}));
-				_.set(slots, `${preprocessed.org_merged.id}.${preprocessed.srv.id}.${preprocessed.d_date.format("YYYY-MM-DD")}`, new_slots);
 
 				slots = _.mapValues(slots, (val, org) => {
 					return _.mapValues(val, (dates, srv) => {
 						return _.pickBy(dates, (data, day) => {
-							return moment.tz(day, preprocessed.org_merged.org_timezone)
+							return day !== preprocessed.d_date.format("YYYY-MM-DD") && moment.tz(day, preprocessed.org_merged.org_timezone)
 								.isAfter(moment.tz(preprocessed.org_merged.org_timezone), 'day');
 						});
 					});
 				});
+				_.set(slots, `${preprocessed.org_merged.id}.${preprocessed.srv.id}.${preprocessed.d_date.format("YYYY-MM-DD")}`, new_slots);
 				return this.iris.ticket_api.cacheServiceSlots(slots);
 			});
 	}
