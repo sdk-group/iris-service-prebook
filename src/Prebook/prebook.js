@@ -469,7 +469,7 @@ class Prebook {
 				time = process.hrtime();
 				let promises = _.reduce(days, (acc, val, key) => {
 					let pre = val.data;
-					console.log("OBSERVING PREBOOK II", val.solid, s_count, (val.solid.prebook >= pre.srv.prebook_operation_time * s_count));
+					// console.log("OBSERVING PREBOOK II", val.solid, s_count, (val.solid.prebook >= pre.srv.prebook_operation_time * s_count));
 					let local_key = pre.d_date.format();
 					acc[local_key] = val.success && val.solid.prebook && (val.solid.prebook >= pre.srv.prebook_operation_time * s_count);
 					return acc;
@@ -688,7 +688,7 @@ class Prebook {
 				}
 
 
-				console.log("SOLID SLOTS", solid_slots);
+				// console.log("SOLID SLOTS", solid_slots);
 				let uniq_interval = preprocessed.org_merged.prebook_slot_uniq_interval || 60;
 				let threshold = 0;
 				let slots = _.filter(solid_slots, (tick) => {
@@ -698,7 +698,7 @@ class Prebook {
 					}
 					return !eq;
 				});
-				console.log("UNIQ SLOTS", slots);
+				// console.log("UNIQ SLOTS", slots);
 				return slots;
 			});
 	}
@@ -716,7 +716,7 @@ class Prebook {
 		let new_slots;
 		return this.computeServiceSlots({
 				preprocessed,
-				count,
+				count: s_count * count,
 				s_count: 1
 			})
 			.then((res) => {
