@@ -469,7 +469,7 @@ class Prebook {
 				time = process.hrtime();
 				let promises = _.reduce(days, (acc, val, key) => {
 					let pre = val.data;
-					// console.log("OBSERVING PREBOOK II", val.solid, s_count, (val.solid.prebook >= pre.srv.prebook_operation_time * s_count));
+					// console.log("OBSERVING PREBOOK II", val.solid, s_count, (val.solid.prebook >= pre.srv.prebook_operation_time * s_count), pre.d_date.format("YYYY-MM-DD"));
 					let local_key = pre.d_date.format();
 					acc[local_key] = val.success && val.solid.prebook && (val.solid.prebook >= pre.srv.prebook_operation_time * s_count);
 					return acc;
@@ -638,7 +638,7 @@ class Prebook {
 					})
 					.then((computed) => {
 						// console.log("COMPUTED", computed);
-						_.set(res, key, _.map(computed, 'time_description') || []);
+						_.set(res, key, _.map(computed, (t) => _.pick(t, ['time_description', 'operator', 'source'])) || []);
 						return res;
 					});
 			})
@@ -649,16 +649,12 @@ class Prebook {
 				// 	}));
 
 				this.emitter.emit("prebook.save.service.slots", cache);
-				let all_slots = _.map(_.get(cache, key, []), t => {
-					return {
-						time_description: t
-					};
-				});
+				let all_slots = _.get(cache, key, []);
 
 				let solid_slots = [];
 				let curr = [];
 				let all = _.round(_.size(all_slots) / s_count);
-				console.log("ALL SLOTS", all_slots, all);
+				// console.log("ALL SLOTS", all_slots, all);
 
 				for (var i = 0; i < all; i++) {
 					if (_.size(all_slots) < s_count)
@@ -668,7 +664,7 @@ class Prebook {
 					// console.log("SZ ALL", _.size(all_slots), curr);
 					for (var j = 0; j < s_count - 1; j++) {
 						let last = _.last(curr);
-						let next = _.findIndex(all_slots, t => (t.time_description[0] == last.time_description[1]));
+						let next = _.findIndex(all_slots, t => (t.time_description[0] == last.time_description[1] && t.source == last.source));
 						// console.log("NXT", last, next, !!~next, j, curr, _.size(curr));
 						if (!!~next)
 							curr = _.concat(curr, _.pullAt(all_slots, next));
@@ -688,7 +684,7 @@ class Prebook {
 				}
 
 
-				console.log("SOLID SLOTS", solid_slots);
+				// console.log("SOLID SLOTS", solid_slots);
 				let uniq_interval = preprocessed.org_merged.prebook_slot_uniq_interval || 60;
 				let threshold = 0;
 				let slots = _.filter(solid_slots, (tick) => {
@@ -698,7 +694,7 @@ class Prebook {
 					}
 					return !eq;
 				});
-				console.log("UNIQ SLOTS", slots);
+				// console.log("UNIQ SLOTS", slots);
 				return slots;
 			});
 	}
@@ -720,7 +716,9 @@ class Prebook {
 				s_count: 1
 			})
 			.then((res) => {
-				new_slots = _.map(res, 'time_description');
+				new_slots = _.map(res, t => {
+					return _.pick(t, ['time_description', 'operator', 'source']);
+				});
 				return this.iris.ticket_api.getServiceSlotsCache();
 			})
 			.then((slots) => {
@@ -747,6 +745,7 @@ class Prebook {
 		count,
 		s_count
 	}) {
+		// console.log("PRE CMP SS", preprocessed);
 		return this.iris.observe({
 				operator: '*',
 				services: [{
@@ -812,13 +811,14 @@ class Prebook {
 
 	actionGetStats(data, replace = false) {
 		let days = _.castArray(data);
+		// console.log("DAYS", days);
 		let org = days[0].org_merged.id;
 		let srv = days[0].srv.id;
 		return this.services.getServiceQuota()
 			.then((quota) => {
 				// console.log("AAAA", quota);
 				let days_missing = _.filter(days, (pre) => {
-					return !_.has(quota, `${org}.${srv}.${pre.d_date.format("YYYY-MM-DD")}`) || pre.today; ///*|| !_.get(quota, `${org}.${srv}.${pre.d_date.format("YYYY-MM-DD")}.available`) || !_.get(quota, `${org}.${srv}.${pre.d_date.format("YYYY-MM-DD")}.solid` )*/ ;
+					return !_.has(quota, `${org}.${srv}.${pre.d_date.format("YYYY-MM-DD")}`) || pre.today;
 				});
 				return _.isEmpty(days_missing) ? quota : Promise.map(days_missing, (pre) => {
 						return this.computeServiceQuota(pre);
@@ -840,7 +840,10 @@ class Prebook {
 					});
 			})
 			.then((days_quota) => {
-				// console.log("QUOTA", days_quota);
+				// console.log("QUOTA", require('util')
+				// 	.inspect(days_quota, {
+				// 		depth: null
+				// 	}));
 				let preserve = [];
 				let result = _.map(days, (pre) => {
 					let part = (pre.today ? pre.srv.prebook_today_percentage : pre.srv.prebook_percentage);
