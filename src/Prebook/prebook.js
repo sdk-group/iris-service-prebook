@@ -102,13 +102,10 @@ class Prebook {
 		offset = 600,
 		schedules
 	}) {
-		let dedicated = dedicated_date ? moment(dedicated_date)
-			.tz(tz) : moment.tz(tz);
+		let dedicated = dedicated_date ? moment.tz(dedicated_date, tz) : moment.tz(tz);
 		let booking = moment.utc();
-		let now = moment()
-			.tz(tz)
-			.diff(moment()
-				.tz(tz)
+		let now = moment.tz(tz)
+			.diff(moment.tz(tz)
 				.startOf('day'), 'seconds');
 		let sch = _.find(_.castArray(schedules), (piece) => {
 			return !!~_.indexOf(piece.has_day, dedicated.format('dddd'));
@@ -862,7 +859,7 @@ class Prebook {
 							prebook: 0
 						}
 					});
-					// console.log("STATS", stats, `${org}.${srv}.${date}`, stats.available.live * part >= (stats.reserved + pre.srv.prebook_operation_time), stats.available.live * part, (stats.reserved + pre.srv.prebook_operation_time));
+					console.log("STATS", stats, `${org}.${srv}.${date}`, stats.available.live * part >= (stats.reserved + pre.srv.prebook_operation_time), stats.available.live * part, (stats.reserved + pre.srv.prebook_operation_time));
 					let success = ((stats.available.live * part) >= (stats.reserved));
 					return {
 						success,
