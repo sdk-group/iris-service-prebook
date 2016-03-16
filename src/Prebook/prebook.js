@@ -469,7 +469,7 @@ class Prebook {
 				time = process.hrtime();
 				let promises = _.reduce(days, (acc, val, key) => {
 					let pre = val.data;
-					// console.log("OBSERVING PREBOOK II", val.solid, s_count, (val.solid.prebook >= pre.srv.prebook_operation_time * s_count), pre.d_date.format("YYYY-MM-DD"));
+					// console.log("OBSERVING PREBOOK II", val.solid, val.success, s_count, pre.srv.prebook_operation_time, (val.solid.prebook >= pre.srv.prebook_operation_time * s_count), pre.d_date.format("YYYY-MM-DD"));
 					let local_key = pre.d_date.format();
 					acc[local_key] = val.success && val.solid.prebook && (val.solid.prebook >= pre.srv.prebook_operation_time * s_count);
 					return acc;
@@ -477,10 +477,10 @@ class Prebook {
 				return Promise.props(promises);
 			})
 			.then((res) => {
-				// console.log("RES", require('util')
-				// 	.inspect(res, {
-				// 		depth: null
-				// 	}));
+				console.log("RES", require('util')
+					.inspect(res, {
+						depth: null
+					}));
 				let diff = process.hrtime(time);
 				console.log('AVDAYS DONE IN  %d nanoseconds', diff[0] * 1e9 + diff[1]);
 				return {
@@ -654,7 +654,7 @@ class Prebook {
 				let solid_slots = [];
 				let curr = [];
 				let all = _.round(_.size(all_slots) / s_count);
-				// console.log("ALL SLOTS", all_slots, all);
+				console.log("ALL SLOTS", all_slots, all);
 
 				for (var i = 0; i < all; i++) {
 					if (_.size(all_slots) < s_count)
@@ -684,7 +684,7 @@ class Prebook {
 				}
 
 
-				// console.log("SOLID SLOTS", solid_slots);
+				console.log("SOLID SLOTS", solid_slots);
 				let uniq_interval = preprocessed.org_merged.prebook_slot_uniq_interval || 60;
 				let threshold = 0;
 				let slots = _.filter(solid_slots, (tick) => {
@@ -694,7 +694,7 @@ class Prebook {
 					}
 					return !eq;
 				});
-				// console.log("UNIQ SLOTS", slots);
+				console.log("UNIQ SLOTS", slots);
 				return slots;
 			});
 	}
@@ -862,8 +862,8 @@ class Prebook {
 							prebook: 0
 						}
 					});
-					// console.log("STATS", stats, `${org}.${srv}.${date}`);
-					let success = (stats.available.live * part >= (stats.reserved + pre.srv.prebook_operation_time));
+					// console.log("STATS", stats, `${org}.${srv}.${date}`, stats.available.live * part >= (stats.reserved + pre.srv.prebook_operation_time), stats.available.live * part, (stats.reserved + pre.srv.prebook_operation_time));
+					let success = ((stats.available.live * part) >= (stats.reserved));
 					return {
 						success,
 						available: stats.available,
