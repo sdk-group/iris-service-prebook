@@ -651,7 +651,7 @@ class Prebook {
 				let solid_slots = [];
 				let curr = [];
 				let all = _.round(_.size(all_slots) / s_count);
-				console.log("ALL SLOTS", all_slots, all);
+				// console.log("ALL SLOTS", all_slots, all);
 
 				for (var i = 0; i < all; i++) {
 					if (_.size(all_slots) < s_count)
@@ -681,7 +681,7 @@ class Prebook {
 				}
 
 
-				console.log("SOLID SLOTS", solid_slots);
+				// console.log("SOLID SLOTS", solid_slots);
 				let uniq_interval = preprocessed.org_merged.prebook_slot_uniq_interval || 60;
 				let threshold = 0;
 				let slots = _.filter(solid_slots, (tick) => {
@@ -691,7 +691,7 @@ class Prebook {
 					}
 					return !eq;
 				});
-				console.log("UNIQ SLOTS", slots);
+				// console.log("UNIQ SLOTS", slots);
 				return slots;
 			});
 	}
@@ -859,7 +859,7 @@ class Prebook {
 							prebook: 0
 						}
 					});
-					console.log("STATS", stats, `${org}.${srv}.${date}`, stats.max_available.live * part >= (stats.reserved + pre.srv.prebook_operation_time), stats.max_available.live * part, (stats.reserved + pre.srv.prebook_operation_time));
+					// console.log("STATS", stats, `${org}.${srv}.${date}`, stats.max_available.live * part >= (stats.reserved + pre.srv.prebook_operation_time), stats.max_available.live * part, (stats.reserved + pre.srv.prebook_operation_time));
 					let success = ((stats.max_available.live * part) >= (stats.reserved));
 					return {
 						success,
