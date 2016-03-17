@@ -650,7 +650,7 @@ class Prebook {
 
 				let solid_slots = [];
 				let curr = [];
-				let all = _.round(_.size(all_slots) / s_count);
+				let all = _.round(_.size(all_slots) / s_count) + 1;
 				// console.log("ALL SLOTS", all_slots, all);
 
 				for (var i = 0; i < all; i++) {
