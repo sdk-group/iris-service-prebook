@@ -19,7 +19,6 @@ class Prebook {
 	}
 	launch() {
 			this.emitter.emit('taskrunner.add.task', {
-				now: 0,
 				time: 0,
 				task_name: "",
 				module_name: "prebook",
@@ -50,7 +49,6 @@ class Prebook {
 					});
 				});
 				this.emitter.emit('taskrunner.add.task', {
-					now: 0,
 					time: this.prebook_check_interval,
 					task_name: "",
 					module_name: "prebook",
@@ -474,10 +472,10 @@ class Prebook {
 				return Promise.props(promises);
 			})
 			.then((res) => {
-				console.log("RES", require('util')
-					.inspect(res, {
-						depth: null
-					}));
+				// console.log("RES", require('util')
+				// 	.inspect(res, {
+				// 		depth: null
+				// 	}));
 				let diff = process.hrtime(time);
 				console.log('AVDAYS DONE IN  %d nanoseconds', diff[0] * 1e9 + diff[1]);
 				return {
