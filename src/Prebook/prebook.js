@@ -576,6 +576,10 @@ class Prebook {
 					return _.mapValues(org_q, (srv_q, srv_id) => {
 						return _.pickBy(_.mapValues(srv_q, (date_q, date) => {
 							return _.defaultsDeep(date_q, {
+								max_available: {
+									live: 0,
+									prebook: 0
+								},
 								available: {
 									live: 0,
 									prebook: 0
@@ -847,6 +851,10 @@ class Prebook {
 					preserve.push(date);
 					let stats = _.get(days_quota, `${org}.${srv}.${date}`);
 					_.defaultsDeep(stats, {
+						max_available: {
+							live: 0,
+							prebook: 0
+						},
 						available: {
 							live: 0,
 							prebook: 0
