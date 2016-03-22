@@ -269,8 +269,7 @@ class Prebook {
 				history
 			}) => {
 				hst = history;
-				hst.local_time = moment.tz(pre.org_merged.org_timezone)
-					.format('x');
+				hst.local_time = moment.tz(pre.org_merged.org_timezone);
 				b_priority = basic_priority;
 				return this.actionGetStats(pre);
 			})
