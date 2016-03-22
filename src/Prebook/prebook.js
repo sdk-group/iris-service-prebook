@@ -112,6 +112,7 @@ class Prebook {
 		let today = booking.isSame(dedicated, 'day');
 		let start = today ? now + offset : _.min(chunks);
 		let td = [start, _.max(chunks)];
+		// console.log("SCH", today, td, sch, dedicated.format('dddd'));
 		// console.log("DATES", dedicated_date, dedicated.format(), booking.format(), start, today);
 		return {
 			d_date: dedicated,
@@ -341,7 +342,7 @@ class Prebook {
 					operator: '*',
 					time_description: org.td,
 					dedicated_date: org.d_date,
-					service_keys: this.services.startpoint.cache_service_ids,
+					service_keys: this.services.getSystemName('cache', 'service_ids'),
 					organization: org.org_merged.id,
 					tick,
 					method: 'prebook'
@@ -753,7 +754,7 @@ class Prebook {
 				}],
 				time_description: preprocessed.td,
 				dedicated_date: preprocessed.d_date,
-				service_keys: this.services.startpoint.cache_service_ids,
+				service_keys: this.services.getSystemName('cache', 'service_ids'),
 				organization: preprocessed.org_merged.id,
 				count,
 				service_count: s_count,
@@ -785,7 +786,7 @@ class Prebook {
 				operator: '*',
 				time_description: preprocessed.td,
 				dedicated_date: preprocessed.d_date,
-				service_keys: this.services.startpoint.cache_service_ids,
+				service_keys: this.services.getSystemName('cache', 'service_ids'),
 				organization: preprocessed.org_merged.id,
 				method: 'live',
 				quota_status: true
@@ -796,7 +797,7 @@ class Prebook {
 					operator: '*',
 					time_description: preprocessed.td,
 					dedicated_date: preprocessed.d_date,
-					service_keys: this.services.startpoint.cache_service_ids,
+					service_keys: this.services.getSystemName('cache', 'service_ids'),
 					organization: preprocessed.org_merged.id,
 					method: 'prebook',
 					quota_status: true
