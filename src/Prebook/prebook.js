@@ -865,8 +865,8 @@ class Prebook {
 							prebook: 0
 						}
 					});
-					// console.log("STATS", stats, `${org}.${srv}.${date}`, stats.max_available.live * part >= (stats.reserved + pre.srv.prebook_operation_time), stats.max_available.live * part, (stats.reserved + pre.srv.prebook_operation_time));
-					let success = ((stats.max_available.live * part) >= (stats.reserved));
+					let success = !!(stats.max_available.live * part) && ((stats.max_available.live * part) >= (stats.reserved));
+					// console.log("STATS", part, stats, `${org}.${srv}.${date}`, !!(stats.max_available.live * part) && (stats.max_available.live * part >= (stats.reserved)), stats.max_available.live * part, (stats.reserved));
 					return {
 						success,
 						available: stats.available,
