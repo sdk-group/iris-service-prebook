@@ -341,7 +341,7 @@ class Prebook {
 					operator: '*',
 					time_description: org.td,
 					dedicated_date: org.d_date,
-					service_keys: this.services.getSystemName('cache', 'service_ids'),
+					service_keys: this.services.getSystemName('cache', 'service_ids'),operator_keys: this.services.getSystemName('global', 'membership_description'),
 					organization: org.org_merged.id,
 					tick,
 					method: 'prebook'
@@ -753,7 +753,7 @@ class Prebook {
 				}],
 				time_description: preprocessed.td,
 				dedicated_date: preprocessed.d_date,
-				service_keys: this.services.getSystemName('cache', 'service_ids'),
+				service_keys: this.services.getSystemName('cache', 'service_ids'),operator_keys: this.services.getSystemName('global', 'membership_description'),
 				organization: preprocessed.org_merged.id,
 				count,
 				service_count: s_count,
@@ -785,7 +785,7 @@ class Prebook {
 				operator: '*',
 				time_description: preprocessed.td,
 				dedicated_date: preprocessed.d_date,
-				service_keys: this.services.getSystemName('cache', 'service_ids'),
+				service_keys: this.services.getSystemName('cache', 'service_ids'),operator_keys: this.services.getSystemName('global', 'membership_description'),
 				organization: preprocessed.org_merged.id,
 				method: 'live',
 				quota_status: true
@@ -796,7 +796,7 @@ class Prebook {
 					operator: '*',
 					time_description: preprocessed.td,
 					dedicated_date: preprocessed.d_date,
-					service_keys: this.services.getSystemName('cache', 'service_ids'),
+					service_keys: this.services.getSystemName('cache', 'service_ids'),operator_keys: this.services.getSystemName('global', 'membership_description'),
 					organization: preprocessed.org_merged.id,
 					method: 'prebook',
 					quota_status: true
