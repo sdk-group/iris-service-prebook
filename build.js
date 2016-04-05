@@ -16,14 +16,14 @@ gulp.task("es6-js", function () {
 	let production = isProduction();
 	console.log("PROD:", production);
 	let src = ["src/**/*.js"];
-	let plg = ["transform-strict-mode"];
+	let plg = ["transform-strict-mode", "transform-remove-console", "remove-comments"];
 	if (!production) {
 		src.push("tests/**/*.js");
 	} else {
 		// plg.push("uglify:after");
 	}
 	return gulp.src(src)
-		.pipe(babel({
+		.pipe(babel({"comments":false,
 			"presets": ["es2015-node5"],
 			"babelrc": false,
 			"plugins": plg
