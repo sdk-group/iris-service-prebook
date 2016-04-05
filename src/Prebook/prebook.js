@@ -15,7 +15,7 @@ class Prebook {
 		this.iris.initContent();
 		this.services = new ServiceApi();
 		this.services.initContent();
-		this.prebook_check_interval = config.prebook_check_interval || 60;
+		this.prebook_check_interval = config.prebook_check_interval || 600;
 	}
 	launch() {
 			this.emitter.emit('taskrunner.add.task', {
