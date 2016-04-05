@@ -30,8 +30,8 @@ class Prebook {
 				}
 			});
 
-			this.emitter.on('prebook.save.service.quota', (data) => this.updateServiceQuota(data));
-			this.emitter.on('prebook.save.service.slots', (data) => this.updateServiceSlots(data));
+			this.emitter.on('prebook.save.service.quota', (data) => this.actionUpdateServiceQuota(data));
+			this.emitter.on('prebook.save.service.slots', (data) => this.actionUpdateServiceSlots(data));
 			return Promise.resolve(true);
 		}
 		//API
@@ -617,7 +617,7 @@ class Prebook {
 
 	}
 
-	updateServiceQuota(data) {
+	actionUpdateServiceQuota(data) {
 		return data.reset ? this.cacheServiceQuota(data) : this.services.cacheServiceQuota(data);
 	}
 
@@ -699,7 +699,7 @@ class Prebook {
 			});
 	}
 
-	updateServiceSlots(data) {
+	actionUpdateServiceSlots(data) {
 		return data.reset ? this.cacheServiceSlots(data) : this.iris.ticket_api.cacheServiceSlots(data);
 	}
 
