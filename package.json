@@ -54,7 +54,7 @@
     "global-queue": "git+https://github.com/artificial-life/global-queue.git",
     "gulp": "^3.9.1",
     "gulp-babel": "^6.1.2",
-    "lodash": "^4.6.1",
+    "lodash": "^4.8.2",
     "moment-range": "^2.2.0",
     "moment-timezone": "^0.5.3",
     "resource-management-framework": "git+https://github.com/YuuKohaku/rmf-on-rdf.git"
