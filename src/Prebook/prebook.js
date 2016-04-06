@@ -362,6 +362,9 @@ class Prebook {
 				// console.log("CONFIRMING", res);
 
 				return Promise.props({
+					lookup: Promise.map(res.placed, (tick) => {
+						return this.iris.ticket_api.setCodeLookup(tick['@id'], tick.code);
+					}),
 					success: _.isEmpty(res.lost),
 					ticket: this.getTickets({
 							keys: _.map(res.placed, "@id")
