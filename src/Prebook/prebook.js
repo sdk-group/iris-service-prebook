@@ -563,7 +563,7 @@ class Prebook {
 			})
 			.then((quota) => {
 				quo = quota;
-				let days_ex = _.uniq(_.flattenDeep(_.map(quota, (org, org_id) => _.map(org, (s, s_id) => _.keys(s)))));
+				let days_ex = _.uniq(_.flatMap(quota, _.keys));
 				let days_missing = _.filter(days, (pre) => {
 					return !~_.indexOf(days_ex, pre.d_date.format("YYYY-MM-DD")) || pre.today;
 				});
