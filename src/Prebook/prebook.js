@@ -310,6 +310,7 @@ class Prebook {
 					label: this.emitter.addTask('code-registry', {
 						_action: 'make-label',
 						prefix,
+						office: org.org_merged.id,
 						date: org.d_date.format("YYYY-MM-DD")
 					})
 				});
@@ -350,19 +351,21 @@ class Prebook {
 			})
 			.then((res) => {
 				this.emitter.emit("prebook.save.service.quota", {
-					preprocessed: org,
+					data: org,
 					reset: true
 				});
 				this.emitter.emit("prebook.save.service.slots", {
-					preprocessed: org,
-					count,
-					s_count,
+					data: {
+						preprocessed: org,
+						count,
+						s_count
+					},
 					reset: true
 				});
 				// console.log("CONFIRMING", res);
 
 				return Promise.props({
-					lookup: Promise.map(res.placed, (tick) => {
+					lookup: Promise.map(_.values(res.placed), (tick) => {
 						return this.iris.ticket_api.setCodeLookup(tick['@id'], tick.code);
 					}),
 					success: _.isEmpty(res.lost),
@@ -509,18 +512,21 @@ class Prebook {
 	}) {
 		let time = process.hrtime();
 		let days;
+		let org;
 		let quo;
-		return this.services.lockQuota()
-			.then((res) => {
-				// console.log("RES Q C", res);
-				if (!res)
-					return Promise.reject(new Error("Quota is locked."));
-				return this.actionWorkstationOrganizationData({
-					workstation,
-					embed_schedules: true
-				});
+		return this.actionWorkstationOrganizationData({
+				workstation,
+				embed_schedules: true
 			})
 			.then((org_data) => {
+				org = org_data;
+				// console.log("RES Q C", res);
+				return this.services.lockQuota(org.org_merged.id);
+			})
+			.then((res) => {
+				if (!res)
+					return Promise.reject(new Error("Quota is locked."));
+
 				let d_start = moment()
 					.add(start, 'days');
 				let d_end = d_start.clone()
@@ -530,19 +536,20 @@ class Prebook {
 					.by('days', (d) => {
 						dates.push(d);
 					});
+				// console.log("DATES", dates);
 				return _.map(dates, (dedicated_date) => {
 					let dates = this.getDates({
 						dedicated_date,
-						tz: org_data.org_merged.org_timezone,
-						offset: org_data.org_merged.prebook_observe_offset,
-						schedules: org_data.org_merged.has_schedule.prebook
+						tz: org.org_merged.org_timezone,
+						offset: org.org_merged.prebook_observe_offset,
+						schedules: org.org_merged.has_schedule.prebook
 					});
 
 					return {
-						ws: org_data.ws,
-						org_addr: org_data.org_addr,
-						org_merged: org_data.org_merged,
-						org_chain: org_data.org_chain,
+						ws: org.ws,
+						org_addr: org.org_addr,
+						org_merged: org.org_merged,
+						org_chain: org.org_chain,
 						d_date: dates.d_date,
 						b_date: dates.b_date,
 						td: dates.td,
@@ -552,7 +559,7 @@ class Prebook {
 			})
 			.then(data => {
 				days = _.castArray(data);
-				return this.services.getServiceQuota();
+				return this.services.getServiceQuota(org.org_merged.id);
 			})
 			.then((quota) => {
 				quo = quota;
@@ -560,7 +567,7 @@ class Prebook {
 				let days_missing = _.filter(days, (pre) => {
 					return !~_.indexOf(days_ex, pre.d_date.format("YYYY-MM-DD")) || pre.today;
 				});
-				// console.log("DAYS EX", days_ex);
+				// console.log("DAYS EX", days_ex, quo);
 
 				return Promise.mapSeries(days_missing, (pre) => {
 					return this.computeServiceQuota(pre);
@@ -576,30 +583,28 @@ class Prebook {
 				// 	.inspect(days_quota, {
 				// 		depth: null
 				// 	}));
-				days_quota = _.mapValues(days_quota, (org_q, org_id) => {
-					return _.mapValues(org_q, (srv_q, srv_id) => {
-						return _.pickBy(_.mapValues(srv_q, (date_q, date) => {
-							return _.defaultsDeep(date_q, {
-								max_available: {
-									live: 0,
-									prebook: 0
-								},
-								available: {
-									live: 0,
-									prebook: 0
-								},
-								reserved: 0,
-								max_solid: {
-									live: 0,
-									prebook: 0
-								}
-							});
-						}), (data, day) => {
-							// console.log("ISAFTER", day, moment.tz(day, min.org_merged.org_timezone)
-							// 	.isAfter(moment.tz(min.org_merged.org_timezone)));
-							return moment.tz(day, min.org_merged.org_timezone)
-								.isAfter(moment.tz(min.org_merged.org_timezone), 'day');
+				days_quota = _.mapValues(days_quota, (srv_q, srv_id) => {
+					return _.pickBy(_.mapValues(srv_q, (date_q, date) => {
+						return _.defaultsDeep(date_q, {
+							max_available: {
+								live: 0,
+								prebook: 0
+							},
+							available: {
+								live: 0,
+								prebook: 0
+							},
+							reserved: 0,
+							max_solid: {
+								live: 0,
+								prebook: 0
+							}
 						});
+					}), (data, day) => {
+						// console.log("ISAFTER", day, moment.tz(day, min.org_merged.org_timezone)
+						// 	.isAfter(moment.tz(min.org_merged.org_timezone)));
+						return moment.tz(day, min.org_merged.org_timezone)
+							.isAfter(moment.tz(min.org_merged.org_timezone), 'day');
 					});
 				});
 
@@ -610,8 +615,11 @@ class Prebook {
 				let diff = process.hrtime(time);
 				console.log('AVDAYS CACHE WARMUP %d nanoseconds', diff[0] * 1e9 + diff[1]);
 
-				this.emitter.emit("prebook.save.service.quota", days_quota);
-				return this.services.unlockQuota();
+				this.emitter.emit("prebook.save.service.quota", {
+					data: days_quota,
+					office: org.org_merged.id
+				});
+				return this.services.unlockQuota(org.org_merged.id);
 			})
 			.catch(err => {
 				console.log("WARMUP FAILED", err.message);
@@ -620,8 +628,12 @@ class Prebook {
 
 	}
 
-	actionUpdateServiceQuota(data) {
-		return data.reset ? this.cacheServiceQuota(data) : this.services.cacheServiceQuota(data);
+	actionUpdateServiceQuota({
+		data,
+		reset,
+		office
+	}) {
+		return reset ? this.cacheServiceQuota(data) : this.services.cacheServiceQuota(office, data);
 	}
 
 	getServiceSlots({
@@ -629,8 +641,8 @@ class Prebook {
 		count,
 		s_count
 	}) {
-		let key = `${preprocessed.org_merged.id}.${preprocessed.srv.id}.${preprocessed.d_date.format("YYYY-MM-DD")}`;
-		return this.iris.ticket_api.getServiceSlotsCache()
+		let key = `${preprocessed.srv.id}.${preprocessed.d_date.format("YYYY-MM-DD")}`;
+		return this.iris.ticket_api.getServiceSlotsCache(preprocessed.org_merged.id)
 			.then((res) => {
 				res = res || {};
 				// console.log("KEY", key, preprocessed.today, _.get(res, key), res);
@@ -651,7 +663,10 @@ class Prebook {
 				// 		depth: null
 				// 	}));
 
-				this.emitter.emit("prebook.save.service.slots", cache);
+				this.emitter.emit("prebook.save.service.slots", {
+					office: preprocessed.org_merged.id,
+					data: cache
+				});
 				let all_slots = _.get(cache, key, []);
 
 				let solid_slots = [];
@@ -702,15 +717,18 @@ class Prebook {
 			});
 	}
 
-	actionUpdateServiceSlots(data) {
-		return data.reset ? this.cacheServiceSlots(data) : this.iris.ticket_api.cacheServiceSlots(data);
+	actionUpdateServiceSlots({
+		data,
+		reset,
+		office
+	}) {
+		return reset ? this.cacheServiceSlots(data) : this.iris.ticket_api.cacheServiceSlots(office, data);
 	}
 
 	cacheServiceSlots({
 		preprocessed,
 		count,
-		s_count,
-		reset = false
+		s_count
 	}) {
 		let new_slots;
 		return this.computeServiceSlots({
@@ -722,7 +740,7 @@ class Prebook {
 				new_slots = _.map(res, t => {
 					return _.pick(t, ['time_description', 'operator', 'source']);
 				});
-				return this.iris.ticket_api.getServiceSlotsCache();
+				return this.iris.ticket_api.getServiceSlotsCache(preprocessed.org_merged.id);
 			})
 			.then((slots) => {
 				// console.log("NEW SLOTS", require('util')
@@ -730,16 +748,14 @@ class Prebook {
 				// 		depth: null
 				// 	}));
 
-				slots = _.mapValues(slots, (val, org) => {
-					return _.mapValues(val, (dates, srv) => {
-						return _.pickBy(dates, (data, day) => {
-							return day !== preprocessed.d_date.format("YYYY-MM-DD") && moment.tz(day, preprocessed.org_merged.org_timezone)
-								.isAfter(moment.tz(preprocessed.org_merged.org_timezone), 'day');
-						});
+				slots = _.mapValues(slots, (dates, srv) => {
+					return _.pickBy(dates, (data, day) => {
+						return day !== preprocessed.d_date.format("YYYY-MM-DD") && moment.tz(day, preprocessed.org_merged.org_timezone)
+							.isAfter(moment.tz(preprocessed.org_merged.org_timezone), 'day');
 					});
 				});
-				_.set(slots, `${preprocessed.org_merged.id}.${preprocessed.srv.id}.${preprocessed.d_date.format("YYYY-MM-DD")}`, new_slots);
-				return this.iris.ticket_api.cacheServiceSlots(slots);
+				_.set(slots, `${preprocessed.srv.id}.${preprocessed.d_date.format("YYYY-MM-DD")}`, new_slots);
+				return this.iris.ticket_api.cacheServiceSlots(preprocessed.org_merged.id, slots);
 			});
 	}
 
@@ -767,19 +783,18 @@ class Prebook {
 			.then(res => _.values(res));
 	}
 
-	cacheServiceQuota({
-		preprocessed,
-		reset = false
-	}) {
+	cacheServiceQuota(
+		preprocessed
+	) {
 		let new_quota;
 		return this.computeServiceQuota(preprocessed)
 			.then((res) => {
 				new_quota = res;
-				return this.services.getServiceQuota();
+				return this.services.getServiceQuota(preprocessed.org_merged.id);
 			})
 			.then((quota) => {
 				// console.log("NEW QUOTA", new_quota[preprocessed.org_merged.id][preprocessed.srv.id]);
-				return this.services.cacheServiceQuota(_.merge(quota, new_quota));
+				return this.services.cacheServiceQuota(preprocessed.org_merged.id, _.merge(quota, new_quota));
 			});
 	}
 
@@ -820,11 +835,11 @@ class Prebook {
 		// console.log("DAYS", days);
 		let org = days[0].org_merged.id;
 		let srv = days[0].srv.id;
-		return this.services.getServiceQuota()
+		return this.services.getServiceQuota(org)
 			.then((quota) => {
-				// console.log("AAAA", quota);
+				// console.log("QUOTA", quota);
 				let days_missing = _.filter(days, (pre) => {
-					return !_.has(quota, `${org}.${srv}.${pre.d_date.format("YYYY-MM-DD")}`) || pre.today;
+					return !_.has(quota, `${srv}.${pre.d_date.format("YYYY-MM-DD")}`) || pre.today;
 				});
 				return _.isEmpty(days_missing) ? quota : Promise.map(days_missing, (pre) => {
 						return this.computeServiceQuota(pre);
@@ -838,8 +853,8 @@ class Prebook {
 						// 	}));
 						return _.reduce(md, (acc, res, index) => {
 							let pre = days_missing[index];
-							let q = _.get(res, `${org}.${srv}.${pre.d_date.format("YYYY-MM-DD")}`, {});
-							_.set(res, `${org}.${srv}.${pre.d_date.format("YYYY-MM-DD")}`, q);
+							let q = _.get(res, `${srv}.${pre.d_date.format("YYYY-MM-DD")}`, {});
+							_.set(res, `${srv}.${pre.d_date.format("YYYY-MM-DD")}`, q);
 							// console.log("MISSING", acc, pre.d_date.format("YYYY-MM-DD"));
 							return _.merge(acc, res);
 						}, quota || {});
@@ -856,7 +871,7 @@ class Prebook {
 					part = _.clamp(part, 0, 100) / 100;
 					let date = pre.d_date.format("YYYY-MM-DD");
 					preserve.push(date);
-					let stats = _.get(days_quota, `${org}.${srv}.${date}`);
+					let stats = _.get(days_quota, `${srv}.${date}`);
 					_.defaultsDeep(stats, {
 						max_available: {
 							live: 0,
@@ -883,9 +898,9 @@ class Prebook {
 				});
 				let new_quota = days_quota;
 				if (replace) {
-					let all = _.keys(_.get(days_quota, `${org}.${srv}`));
+					let all = _.keys(_.get(days_quota, `${srv}`));
 					let min = _.minBy(days, day => day.d_date.format('x'));
-					_.set(new_quota, `${org}.${srv}`, _.pickBy(_.get(days_quota, `${org}.${srv}`), (data, day) => {
+					_.set(new_quota, `${srv}`, _.pickBy(_.get(days_quota, `${srv}`), (data, day) => {
 						return moment.tz(day, min.org_merged.org_timezone)
 							.isAfter(moment(min.d_date), 'day') || !!~_.indexOf(preserve, day);
 					}));
@@ -895,7 +910,10 @@ class Prebook {
 				// 	.inspect(new_quota[org][srv], {
 				// 		depth: null
 				// 	}));
-				this.emitter.emit("prebook.save.service.quota", new_quota);
+				this.emitter.emit("prebook.save.service.quota", {
+					data: new_quota,
+					office: org
+				});
 				return result;
 			});
 	}
