@@ -1,5 +1,5 @@
 'use strict'
-let emitter = require("global-queue");
+
 let BookingApi = require('resource-management-framework')
 	.BookingApi;
 let ServiceApi = require('resource-management-framework')
@@ -8,7 +8,7 @@ let moment = require('moment-timezone');
 require('moment-range');
 class Prebook {
 	constructor() {
-		this.emitter = emitter;
+		this.emitter = message_bus;
 	}
 	init(config) {
 		this.iris = new BookingApi();
@@ -22,9 +22,8 @@ class Prebook {
 				time: 0,
 				task_name: "",
 				module_name: "prebook",
-				task_id: "prebook-expiration-check",
-				regular: true,
 				task_type: "add-task",
+				solo: true,
 				params: {
 					_action: "expiration-check"
 				}
@@ -38,8 +37,34 @@ class Prebook {
 	actionExpirationCheck({
 		ts_now
 	}) {
-		return this.iris.ticket_api.getExpiredTickets(ts_now)
-			.then((tickets) => {
+		return this.emitter.addTask('workstation', {
+				_action: 'organization-timezones'
+			})
+			.then(res => {
+				let todays = _(res)
+					.values()
+					.uniq()
+					.reduce((acc, t) => {
+						acc[t] = moment.tz(t)
+							.format("YYYY-MM-DD");
+						return acc;
+					}, {});
+				return Promise.mapSeries(_.keys(res), (org_destination) => {
+					return this.getTickets({
+						query: {
+							dedicated_date: todays[res[org_destination]],
+							org_destination,
+							state: ['booked']
+						}
+					});
+				});
+			})
+			.then((ticks) => {
+				let tickets = _(ticks)
+					.flatten()
+					.filter(t => (t.expiry < ts_now))
+					.map('id')
+					.value();
 				// console.log("TICKS TO EXPIRE", tickets);
 				let p = _.map(tickets, (ticket) => {
 					return this.emitter.addTask("queue", {
@@ -53,8 +78,7 @@ class Prebook {
 					task_name: "",
 					module_name: "prebook",
 					task_type: "add-task",
-					task_id: "prebook-expiration-check",
-					regular: true,
+					solo: true,
 					params: {
 						_action: "expiration-check"
 					}
