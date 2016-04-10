@@ -113,10 +113,7 @@ class Prebook {
 				workstation,
 				embed_schedules
 			})
-			.then(res => res[workstation])
-			.catch(err => {
-				console.log("PB WSOD ERR", err.stack);
-			});
+			.then(res => res[workstation]);
 	}
 	getDates({
 		dedicated_date,
@@ -244,9 +241,6 @@ class Prebook {
 					today: dates.today
 
 				};
-			})
-			.catch(err => {
-				console.log("PREBOOK TERM PREPARE ERR", err.stack);
 			});
 	}
 	actionTicketConfirm(fields) {
