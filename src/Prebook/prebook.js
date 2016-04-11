@@ -119,7 +119,7 @@ class Prebook {
 		dedicated_date,
 		tz,
 		offset = 600,
-		schedules
+			schedules
 	}) {
 		let dedicated = dedicated_date ? moment.tz(dedicated_date, tz) : moment.tz(tz);
 		let booking = moment.utc();
@@ -146,7 +146,7 @@ class Prebook {
 		workstation,
 		service,
 		start = 0,
-		end
+			end
 	}) {
 		return Promise.props({
 				org_data: this.actionWorkstationOrganizationData({
@@ -180,8 +180,8 @@ class Prebook {
 						let dates = this.getDates({
 							dedicated_date,
 							tz: org_data.org_merged.org_timezone,
-							offset: org_data.org_merged.prebook_observe_offset,
-							schedules: org_data.org_merged.has_schedule.prebook
+								offset: org_data.org_merged.prebook_observe_offset,
+								schedules: org_data.org_merged.has_schedule.prebook
 						});
 
 						return {
@@ -226,8 +226,8 @@ class Prebook {
 				let dates = this.getDates({
 					dedicated_date,
 					tz: org_data.org_merged.org_timezone,
-					offset: (offset ? org_data.org_merged.prebook_observe_offset : 0),
-					schedules: org_data.org_merged.has_schedule.prebook
+						offset: (offset ? org_data.org_merged.prebook_observe_offset : 0),
+						schedules: org_data.org_merged.has_schedule.prebook
 				});
 				return {
 					ws: org_data.ws,
@@ -321,16 +321,16 @@ class Prebook {
 					computed_priority,
 					expiry: this.emitter.addTask("taskrunner.now")
 						.then((res) => (res + diff)),
-					pin: this.emitter.addTask('code-registry', {
-						_action: 'make-pin',
-						prefix: org.org_merged.pin_code_prefix
-					}),
-					label: this.emitter.addTask('code-registry', {
-						_action: 'make-label',
-						prefix,
-						office: org.org_merged.id,
-						date: org.d_date.format("YYYY-MM-DD")
-					})
+						pin: this.emitter.addTask('code-registry', {
+							_action: 'make-pin',
+							prefix: org.org_merged.pin_code_prefix
+						}),
+						label: this.emitter.addTask('code-registry', {
+							_action: 'make-label',
+							prefix,
+							office: org.org_merged.id,
+							date: org.d_date.format("YYYY-MM-DD")
+						})
 				});
 			})
 			.then(({
@@ -360,7 +360,7 @@ class Prebook {
 					operator: '*',
 					time_description: org.td,
 					dedicated_date: org.d_date,
-					service_keys: this.services.getSystemName('cache', 'service_ids'),
+					service_keys: this.services.getSystemName('registry', 'service'),
 					operator_keys: this.services.getSystemName('global', 'membership_description'),
 					organization: org.org_merged.id,
 					tick,
@@ -408,7 +408,7 @@ class Prebook {
 		dedicated_date,
 		workstation,
 		service_count = 1,
-		per_service = 10000
+			per_service = 10000
 	}) {
 		let org;
 		let s_count = _.parseInt(service_count) || 1;
@@ -462,9 +462,9 @@ class Prebook {
 		service,
 		workstation,
 		service_count = 1,
-		per_service = 1,
-		start,
-		end
+			per_service = 1,
+			start,
+			end
 	}) {
 		let done;
 		let time = process.hrtime();
@@ -559,8 +559,8 @@ class Prebook {
 					let dates = this.getDates({
 						dedicated_date,
 						tz: org.org_merged.org_timezone,
-						offset: org.org_merged.prebook_observe_offset,
-						schedules: org.org_merged.has_schedule.prebook
+							offset: org.org_merged.prebook_observe_offset,
+							schedules: org.org_merged.has_schedule.prebook
 					});
 
 					return {
@@ -640,7 +640,7 @@ class Prebook {
 				return this.services.unlockQuota(org.org_merged.id);
 			})
 			.catch(err => {
-				console.log("WARMUP FAILED", err.message);
+				console.log("WARMUP FAILED", err.stack);
 				return Promise.reject(new Error("Warmup."));
 			});
 
@@ -667,7 +667,7 @@ class Prebook {
 				return _.has(res, key) && !preprocessed.today ? Promise.resolve(res) : this.computeServiceSlots({
 						preprocessed,
 						count: count * s_count,
-						s_count: 1
+							s_count: 1
 					})
 					.then((computed) => {
 						// console.log("COMPUTED", computed);
@@ -752,7 +752,7 @@ class Prebook {
 		return this.computeServiceSlots({
 				preprocessed,
 				count: s_count * count,
-				s_count: 1
+					s_count: 1
 			})
 			.then((res) => {
 				new_slots = _.map(res, t => {
@@ -791,7 +791,7 @@ class Prebook {
 				}],
 				time_description: preprocessed.td,
 				dedicated_date: preprocessed.d_date,
-				service_keys: this.services.getSystemName('cache', 'service_ids'),
+				service_keys: this.services.getSystemName('registry', 'service'),
 				operator_keys: this.services.getSystemName('global', 'membership_description'),
 				organization: preprocessed.org_merged.id,
 				count,
@@ -823,7 +823,7 @@ class Prebook {
 				operator: '*',
 				time_description: preprocessed.td,
 				dedicated_date: preprocessed.d_date,
-				service_keys: this.services.getSystemName('cache', 'service_ids'),
+				service_keys: this.services.getSystemName('registry', 'service'),
 				operator_keys: this.services.getSystemName('global', 'membership_description'),
 				organization: preprocessed.org_merged.id,
 				method: 'live',
@@ -835,7 +835,7 @@ class Prebook {
 					operator: '*',
 					time_description: preprocessed.td,
 					dedicated_date: preprocessed.d_date,
-					service_keys: this.services.getSystemName('cache', 'service_ids'),
+					service_keys: this.services.getSystemName('registry', 'service'),
 					operator_keys: this.services.getSystemName('global', 'membership_description'),
 					organization: preprocessed.org_merged.id,
 					method: 'prebook',
@@ -910,8 +910,8 @@ class Prebook {
 					return {
 						success,
 						available: stats.available,
-						solid: stats.max_solid,
-						data: pre
+							solid: stats.max_solid,
+							data: pre
 					};
 				});
 				let new_quota = days_quota;
