@@ -671,7 +671,7 @@ class Prebook {
 					})
 					.then((computed) => {
 						// console.log("COMPUTED", computed);
-						_.set(res, key, _.map(computed, (t) => _.pick(t, ['time_description', 'operator', 'source'])) || []);
+						_.set(res, key, _.map(computed, (t) => _.pick(t, ['time_description', 'operator', 'destination', 'source'])) || []);
 						return res;
 					});
 			})
@@ -756,7 +756,7 @@ class Prebook {
 			})
 			.then((res) => {
 				new_slots = _.map(res, t => {
-					return _.pick(t, ['time_description', 'operator', 'source']);
+					return _.pick(t, ['time_description', 'operator', 'destination', 'source']);
 				});
 				return this.iris.ticket_api.getServiceSlotsCache(preprocessed.org_merged.id);
 			})
