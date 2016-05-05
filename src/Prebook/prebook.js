@@ -391,7 +391,12 @@ class Prebook {
 					ticket: this.getTickets({
 							keys: _.map(res.placed, "@id")
 						})
-						.then(res => res[0]),
+						.then(res => {
+							if (_.isEmpty(res))
+								return Promise.reject(new Error('Failed to place a ticket.'));
+							else
+								return res[0];
+						}),
 					context
 				});
 			})
