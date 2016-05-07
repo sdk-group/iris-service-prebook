@@ -16,7 +16,7 @@ gulp.task("es6-js", function () {
 	let production = isProduction();
 	console.log("PROD:", production);
 	let src = ["src/**/*.js"];
-	let plg = ["transform-strict-mode", "transform-remove-console",  "remove-comments"];
+	let plg = ["transform-strict-mode",/* "transform-remove-console"*/,  "remove-comments"];
 	if (!production) {
 		src.push("tests/**/*.js");
 	} else {
