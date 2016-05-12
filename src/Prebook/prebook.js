@@ -66,7 +66,7 @@ class Prebook {
 					.filter(t => (t.expiry < ts_now))
 					.map('id')
 					.value();
-				console.log("TICKS TO EXPIRE", tickets, ts_now, ticks);
+				// console.log("TICKS TO EXPIRE", tickets, ts_now, ticks);
 				let p = _.map(tickets, (ticket) => {
 					return this.emitter.addTask("queue", {
 						_action: "ticket-expire",
@@ -101,7 +101,7 @@ class Prebook {
 				keys
 			})
 			.then((res) => {
-				console.log("RES Q", res, query);
+				// console.log("RES Q", res, query);
 				return _.values(res);
 			});
 	}
