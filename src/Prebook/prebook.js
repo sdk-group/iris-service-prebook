@@ -15,7 +15,8 @@ class Prebook {
 		this.iris.initContent();
 		this.services = new ServiceApi();
 		this.services.initContent();
-		this.prebook_check_interval = config.prebook_check_interval || 600;
+		this.prebook_check_interval = config.prebook_check_interval || 30;
+		this.warmup_throttle_hours = config.warmup_throttle_hours || 1;
 	}
 	launch() {
 			this.emitter.emit('taskrunner.add.task', {
@@ -303,7 +304,7 @@ class Prebook {
 					.startOf('day')
 					.add(time_description[0], 'seconds')
 					.diff(moment.tz(org.org_merged.org_timezone)) + org.org_merged.prebook_expiration_interval * 1000;
-				console.log("EXPIRES IN", diff, org.org_merged.prebook_expiration_interval);
+				// console.log("EXPIRES IN", diff, org.org_merged.prebook_expiration_interval);
 				let prior_keys = _.keys(priority);
 				let basic = _.mapValues(_.pick(b_priority, prior_keys), v => v.params);
 				let local = _.pick(org.org_merged.priority_description || {}, prior_keys);
@@ -341,7 +342,7 @@ class Prebook {
 				expiry,
 				label
 			}) => {
-				console.log("EXPIRES IN ||", expiry);
+				// console.log("EXPIRES IN ||", expiry);
 				let tick = {
 					dedicated_date: org.d_date,
 					booking_date: org.b_date,
@@ -546,6 +547,12 @@ class Prebook {
 			.then((org_data) => {
 				org = org_data;
 				// console.log("RES Q C", res);
+				return this.services.serviceQuotaExpired(org.org_merged.id, this.warmup_throttle_hours * 3600000);
+			})
+			.then((res) => {
+				// console.log("RES Q C", res);
+				if (_.isBoolean(res) && !res)
+					return Promise.reject(new Error('success'));
 				return this.services.lockQuota(org.org_merged.id);
 			})
 			.then((res) => {
@@ -647,7 +654,9 @@ class Prebook {
 				return this.services.unlockQuota(org.org_merged.id);
 			})
 			.catch(err => {
-				console.log("WARMUP FAILED", err.stack);
+				console.log("WARMUP FAILED", err.message);
+				if (err.message == 'success')
+					return Promise.resolve(true);
 				return Promise.reject(new Error("Warmup."));
 			});
 
