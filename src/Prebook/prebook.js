@@ -19,11 +19,12 @@ class Prebook {
 	}
 	launch() {
 			this.emitter.emit('taskrunner.add.task', {
-				time: 0,
+				time: this.prebook_check_interval,
 				task_name: "",
 				module_name: "prebook",
 				task_type: "add-task",
 				solo: true,
+				regular: true,
 				params: {
 					_action: "expiration-check"
 				}
@@ -65,7 +66,7 @@ class Prebook {
 					.filter(t => (t.expiry < ts_now))
 					.map('id')
 					.value();
-				// console.log("TICKS TO EXPIRE", tickets);
+				console.log("TICKS TO EXPIRE", tickets, ts_now, ticks);
 				let p = _.map(tickets, (ticket) => {
 					return this.emitter.addTask("queue", {
 						_action: "ticket-expire",
@@ -73,16 +74,16 @@ class Prebook {
 						auto: true
 					});
 				});
-				this.emitter.emit('taskrunner.add.task', {
-					time: this.prebook_check_interval,
-					task_name: "",
-					module_name: "prebook",
-					task_type: "add-task",
-					solo: true,
-					params: {
-						_action: "expiration-check"
-					}
-				});
+				// this.emitter.emit('taskrunner.add.task', {
+				// 	time: this.prebook_check_interval,
+				// 	task_name: "",
+				// 	module_name: "prebook",
+				// 	task_type: "add-task",
+				// 	solo: true,
+				// 	params: {
+				// 		_action: "expiration-check"
+				// 	}
+				// });
 				return Promise.all(p);
 			})
 			.catch((err) => {
@@ -100,7 +101,7 @@ class Prebook {
 				keys
 			})
 			.then((res) => {
-				// console.log("RES Q", res, query);
+				console.log("RES Q", res, query);
 				return _.values(res);
 			});
 	}
@@ -119,7 +120,7 @@ class Prebook {
 		dedicated_date,
 		tz,
 		offset = 600,
-			schedules
+		schedules
 	}) {
 		let dedicated = dedicated_date ? moment.tz(dedicated_date, tz) : moment.tz(tz);
 		let booking = moment.utc();
@@ -146,7 +147,7 @@ class Prebook {
 		workstation,
 		service,
 		start = 0,
-			end
+		end
 	}) {
 		return Promise.props({
 				org_data: this.actionWorkstationOrganizationData({
@@ -180,8 +181,8 @@ class Prebook {
 						let dates = this.getDates({
 							dedicated_date,
 							tz: org_data.org_merged.org_timezone,
-								offset: org_data.org_merged.prebook_observe_offset,
-								schedules: org_data.org_merged.has_schedule.prebook
+							offset: org_data.org_merged.prebook_observe_offset,
+							schedules: org_data.org_merged.has_schedule.prebook
 						});
 
 						return {
@@ -226,8 +227,8 @@ class Prebook {
 				let dates = this.getDates({
 					dedicated_date,
 					tz: org_data.org_merged.org_timezone,
-						offset: (offset ? org_data.org_merged.prebook_observe_offset : 0),
-						schedules: org_data.org_merged.has_schedule.prebook
+					offset: (offset ? org_data.org_merged.prebook_observe_offset : 0),
+					schedules: org_data.org_merged.has_schedule.prebook
 				});
 				return {
 					ws: org_data.ws,
@@ -302,7 +303,7 @@ class Prebook {
 					.startOf('day')
 					.add(time_description[0], 'seconds')
 					.diff(moment.tz(org.org_merged.org_timezone)) + org.org_merged.prebook_expiration_interval * 1000;
-				// console.log("EXPIRES IN", diff);
+				console.log("EXPIRES IN", diff, org.org_merged.prebook_expiration_interval);
 				let prior_keys = _.keys(priority);
 				let basic = _.mapValues(_.pick(b_priority, prior_keys), v => v.params);
 				let local = _.pick(org.org_merged.priority_description || {}, prior_keys);
@@ -322,16 +323,16 @@ class Prebook {
 					computed_priority,
 					expiry: this.emitter.addTask("taskrunner.now")
 						.then((res) => (res + diff)),
-						pin: this.emitter.addTask('code-registry', {
-							_action: 'make-pin',
-							prefix: org.org_merged.pin_code_prefix
-						}),
-						label: this.emitter.addTask('code-registry', {
-							_action: 'make-label',
-							prefix,
-							office: org.org_merged.id,
-							date: org.d_date.format("YYYY-MM-DD")
-						})
+					pin: this.emitter.addTask('code-registry', {
+						_action: 'make-pin',
+						prefix: org.org_merged.pin_code_prefix
+					}),
+					label: this.emitter.addTask('code-registry', {
+						_action: 'make-label',
+						prefix,
+						office: org.org_merged.id,
+						date: org.d_date.format("YYYY-MM-DD")
+					})
 				});
 			})
 			.then(({
@@ -340,7 +341,7 @@ class Prebook {
 				expiry,
 				label
 			}) => {
-				// console.log("EXPIRES IN ||", expiry);
+				console.log("EXPIRES IN ||", expiry);
 				let tick = {
 					dedicated_date: org.d_date,
 					booking_date: org.b_date,
@@ -414,7 +415,7 @@ class Prebook {
 		dedicated_date,
 		workstation,
 		service_count = 1,
-			per_service = 10000
+		per_service = 10000
 	}) {
 		let org;
 		let s_count = _.parseInt(service_count) || 1;
@@ -468,9 +469,9 @@ class Prebook {
 		service,
 		workstation,
 		service_count = 1,
-			per_service = 1,
-			start,
-			end
+		per_service = 1,
+		start,
+		end
 	}) {
 		let done;
 		let time = process.hrtime();
@@ -565,8 +566,8 @@ class Prebook {
 					let dates = this.getDates({
 						dedicated_date,
 						tz: org.org_merged.org_timezone,
-							offset: org.org_merged.prebook_observe_offset,
-							schedules: org.org_merged.has_schedule.prebook
+						offset: org.org_merged.prebook_observe_offset,
+						schedules: org.org_merged.has_schedule.prebook
 					});
 
 					return {
@@ -673,7 +674,7 @@ class Prebook {
 				return _.has(res, key) && !preprocessed.today ? Promise.resolve(res) : this.computeServiceSlots({
 						preprocessed,
 						count: count * s_count,
-							s_count: 1
+						s_count: 1
 					})
 					.then((computed) => {
 						// console.log("COMPUTED", computed);
@@ -758,7 +759,7 @@ class Prebook {
 		return this.computeServiceSlots({
 				preprocessed,
 				count: s_count * count,
-					s_count: 1
+				s_count: 1
 			})
 			.then((res) => {
 				new_slots = _.map(res, t => {
@@ -916,8 +917,8 @@ class Prebook {
 					return {
 						success,
 						available: stats.available,
-							solid: stats.max_solid,
-							data: pre
+						solid: stats.max_solid,
+						data: pre
 					};
 				});
 				let new_quota = days_quota;
