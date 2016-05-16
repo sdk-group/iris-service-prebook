@@ -124,7 +124,7 @@ class Prebook {
 		schedules
 	}) {
 		let dedicated = dedicated_date ? moment.tz(dedicated_date, tz) : moment.tz(tz);
-		let booking = moment.utc();
+		let booking = moment.tz(tz);
 		let now = moment.tz(tz)
 			.diff(moment.tz(tz)
 				.startOf('day'), 'seconds');
@@ -556,6 +556,7 @@ class Prebook {
 				return this.services.lockQuota(org.org_merged.id);
 			})
 			.then((res) => {
+				// console.log("LOCKED");
 				if (!res)
 					return Promise.reject(new Error("Quota is locked."));
 
