@@ -245,6 +245,7 @@ class Prebook {
 				};
 			});
 	}
+
 	actionTicketConfirm(fields) {
 		let fnames = ['service', 'dedicated_date', 'service_count', 'priority', 'workstation', 'user_id', 'user_type', '_action', 'request_id', 'time_description'];
 		let {
@@ -259,6 +260,7 @@ class Prebook {
 		let event_name = 'book';
 		let org;
 		let hst;
+		let diff;
 		let b_priority;
 		let s_count = _.parseInt(service_count) || 1;
 		let count = 1;
@@ -300,10 +302,11 @@ class Prebook {
 				count = _.round((pre.available.prebook || 0) / (pre.data.srv.prebook_operation_time * s_count));
 				org = pre.data;
 
-				let diff = org.d_date.clone()
+				diff = org.d_date.clone()
 					.startOf('day')
 					.add(time_description[0], 'seconds')
 					.diff(moment.tz(org.org_merged.org_timezone)) + org.org_merged.prebook_expiration_interval * 1000;
+
 				// console.log("EXPIRES IN", diff, org.org_merged.prebook_expiration_interval);
 				let prior_keys = _.keys(priority);
 				let basic = _.mapValues(_.pick(b_priority, prior_keys), v => v.params);
@@ -394,10 +397,27 @@ class Prebook {
 							keys: _.map(res.placed, "@id")
 						})
 						.then(res => {
-							if (_.isEmpty(res))
+							if (_.isEmpty(res)) {
 								return Promise.reject(new Error('Failed to place a ticket.'));
-							else
-								return res[0];
+							} else {
+								let tick = res[0];
+								console.log("TICKET CNF", tick);
+
+								this.emitter.emit('taskrunner.add.task', {
+									time: diff / 1000,
+									task_name: "",
+									module_name: "queue",
+									task_type: "add-task",
+									cancellation_code: tick.code,
+									solo: true,
+									params: {
+										_action: "ticket-expire",
+										ticket: tick.id,
+										auto: true
+									}
+								});
+								return tick;
+							}
 						}),
 					context
 				});
