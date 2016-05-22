@@ -265,6 +265,7 @@ class Prebook {
 		let s_count = _.parseInt(service_count) || 1;
 		let count = 1;
 		let context = {};
+		this.iris.transact();
 		return Promise.props({
 				pre: this.preparePrebookProcessing({
 					workstation,
@@ -387,6 +388,7 @@ class Prebook {
 					reset: true
 				});
 				// console.log("CONFIRMING", res);
+				this.iris.endTransact();
 
 				return Promise.props({
 					lookup: Promise.map(_.values(res.placed), (tick) => {
@@ -423,6 +425,7 @@ class Prebook {
 				});
 			})
 			.catch((err) => {
+				this.iris.endTransact();
 				console.log("PB CONFIRM ERR!", err.stack);
 				return {
 					success: false,
@@ -441,6 +444,7 @@ class Prebook {
 		let org;
 		let s_count = _.parseInt(service_count) || 1;
 		let time = process.hrtime();
+		this.iris.transact();
 		return this.preparePrebookProcessing({
 				workstation,
 				service,
@@ -448,11 +452,16 @@ class Prebook {
 				offset: true
 			})
 			.then((res) => {
+				let diff = process.hrtime(time);
+				console.log('PRE OBSERVE PREPARED IN %d seconds', diff[0] + diff[1] / 1e9);
+				time = process.hrtime();
+
 				return this.actionGetStats(res);
 			})
 			.then((keyed) => {
+				console.log("____________\nQUOTA", keyed);
 				let diff = process.hrtime(time);
-				console.log('PRE OBSERVE PREPARED IN %d nanoseconds', diff[0] * 1e9 + diff[1]);
+				console.log('PRE OBSERVE GOT STATS IN %d seconds', diff[0] + diff[1] / 1e9);
 				time = process.hrtime();
 
 				let pre = keyed[0];
@@ -472,7 +481,8 @@ class Prebook {
 				// 		depth: null
 				// 	}));
 				let diff = process.hrtime(time);
-				console.log('PRE OBSERVE DONE IN  %d nanoseconds', diff[0] * 1e9 + diff[1]);
+				console.log('PRE OBSERVE DONE IN  %d seconds', diff[0] + diff[1] / 1e9);
+				this.iris.endTransact();
 				return {
 					slots: res,
 					success: !!_.size(res)
@@ -480,6 +490,7 @@ class Prebook {
 			})
 			.catch((err) => {
 				console.log("PRE OBSERVE ERR!", err.stack);
+				this.iris.endTransact();
 				return {
 					success: false,
 					reason: err.message
@@ -498,6 +509,7 @@ class Prebook {
 		let time = process.hrtime();
 		// console.log("OBSERVING AVDAYS PREBOOK", service, workstation, start, end);
 		let s_count = _.parseInt(service_count) || 1;
+		this.iris.transact();
 		return this.prepareAvailableDaysProcessing({
 				workstation,
 				service,
@@ -511,7 +523,7 @@ class Prebook {
 				return this.actionGetStats(res.days, replace);
 			})
 			.then((days) => {
-				// console.log("OBSERVING AVDAYS PREBOOK III", keyed);
+				// console.log("OBSERVING AVDAYS PREBOOK III", days);
 				let diff = process.hrtime(time);
 				console.log(' AVDAYS PREPARED IN %d nanoseconds', diff[0] * 1e9 + diff[1]);
 				time = process.hrtime();
@@ -531,6 +543,7 @@ class Prebook {
 				// 	}));
 				let diff = process.hrtime(time);
 				console.log('AVDAYS DONE IN  %d nanoseconds', diff[0] * 1e9 + diff[1]);
+				this.iris.endTransact();
 				return {
 					success: true,
 					done,
@@ -559,14 +572,19 @@ class Prebook {
 		let time = process.hrtime();
 		let days;
 		let org;
-		let quo;
-		return this.actionWorkstationOrganizationData({
-				workstation,
-				embed_schedules: true
+		let srv;
+		this.iris.transact();
+		return Promise.props({
+				org: this.actionWorkstationOrganizationData({
+					workstation,
+					embed_schedules: true
+				}),
+				srv: this.services.getServiceIds()
 			})
 			.then((org_data) => {
-				org = org_data;
-				// console.log("RES Q C", res);
+				org = org_data.org;
+				srv = org_data.srv;
+				// console.log("RES Q C", org_data);
 				return this.services.serviceQuotaExpired(org.org_merged.id, this.warmup_throttle_hours * 3600000);
 			})
 			.then((res) => {
@@ -612,17 +630,10 @@ class Prebook {
 			})
 			.then(data => {
 				days = _.castArray(data);
-				return this.services.getServiceQuota(org.org_merged.id);
-			})
-			.then((quota) => {
-				quo = quota;
-				let days_ex = _.uniq(_.flatMap(quota, _.keys));
-				let days_missing = _.filter(days, (pre) => {
-					return !~_.indexOf(days_ex, pre.d_date.format("YYYY-MM-DD")) || pre.today;
-				});
+
 				// console.log("DAYS EX", days_ex, quo);
 
-				return Promise.mapSeries(days_missing, (pre) => {
+				return Promise.mapSeries(days, (pre) => {
 					return this.computeServiceQuota(pre);
 				});
 			})
@@ -631,7 +642,7 @@ class Prebook {
 
 				let days_quota = _.reduce(res, (acc, val) => {
 					return _.merge(acc, val);
-				}, quo);
+				}, {});
 				// console.log(require('util')
 				// 	.inspect(days_quota, {
 				// 		depth: null
@@ -672,9 +683,11 @@ class Prebook {
 					data: days_quota,
 					office: org.org_merged.id
 				});
+				this.iris.endTransact();
 				return this.services.unlockQuota(org.org_merged.id);
 			})
 			.catch(err => {
+				this.iris.endTransact();
 				console.log("WARMUP FAILED", err.message);
 				if (err.message == 'success')
 					return Promise.resolve(true);
@@ -688,7 +701,10 @@ class Prebook {
 		reset,
 		office
 	}) {
-		return reset ? this.cacheServiceQuota(data) : this.services.cacheServiceQuota(office, data);
+		let expiry = 30 * 24 * 3600;
+		return reset ? this.cacheServiceQuota(data) : this.services.cacheServiceQuota(office, data, {
+			expiry
+		});
 	}
 
 	getServiceSlots({
@@ -696,33 +712,43 @@ class Prebook {
 		count,
 		s_count
 	}) {
-		let key = `${preprocessed.srv.id}.${preprocessed.d_date.format("YYYY-MM-DD")}`;
-		return this.iris.ticket_api.getServiceSlotsCache(preprocessed.org_merged.id)
+		let time = process.hrtime();
+		return this.iris.ticket_api.getServiceSlotsCache(preprocessed.org_merged.id, preprocessed.srv.id, preprocessed.d_date.format("YYYY-MM-DD"))
 			.then((res) => {
-				res = res || {};
-				// console.log("KEY", key, preprocessed.today, _.get(res, key), res);
-				return _.has(res, key) && !preprocessed.today ? Promise.resolve(res) : this.computeServiceSlots({
+
+				let diff = process.hrtime(time);
+				console.log('GET SERVICE SLOTS CACHE IN %d seconds', diff[0] + diff[1] / 1e9);
+				time = process.hrtime();
+
+				res = res || [];
+				return !_.isEmpty(res) && !preprocessed.today ? Promise.resolve(res) : this.computeServiceSlots({
 						preprocessed,
 						count: count * s_count,
 						s_count: 1
 					})
 					.then((computed) => {
 						// console.log("COMPUTED", computed);
-						_.set(res, key, _.map(computed, (t) => _.pick(t, ['time_description', 'operator', 'destination', 'source'])) || []);
-						return res;
+						return _.map(computed, (t) => _.pick(t, ['time_description', 'operator', 'destination', 'source'])) || [];
 					});
 			})
 			.then((cache) => {
 				// console.log("SLOTS CACHE", require('util')
-				// 	.inspect(_.get(cache, key), {
+				// 	.inspect(cache, {
 				// 		depth: null
 				// 	}));
 
+				let diff = process.hrtime(time);
+				console.log('COMPUTED SERVICE SLOTS IN %d seconds', diff[0] + diff[1] / 1e9);
+				time = process.hrtime();
+
+
 				this.emitter.emit("prebook.save.service.slots", {
 					office: preprocessed.org_merged.id,
+					service: preprocessed.srv.id,
+					date: preprocessed.d_date.format("YYYY-MM-DD"),
 					data: cache
 				});
-				let all_slots = _.get(cache, key, []);
+				let all_slots = cache;
 
 				let solid_slots = [];
 				let curr = [];
@@ -757,6 +783,11 @@ class Prebook {
 				}
 
 
+				diff = process.hrtime(time);
+				console.log('COMPOSED SLOTS IN %d seconds', diff[0] + diff[1] / 1e9);
+				time = process.hrtime();
+
+
 				// console.log("SOLID SLOTS", solid_slots);
 				let uniq_interval = preprocessed.org_merged.prebook_slot_uniq_interval || 60;
 				let threshold = 0;
@@ -767,6 +798,12 @@ class Prebook {
 					}
 					return !eq;
 				});
+
+				diff = process.hrtime(time);
+				console.log('UNIQ SLOTS IN %d seconds', diff[0] + diff[1] / 1e9);
+				time = process.hrtime();
+
+
 				// console.log("UNIQ SLOTS", slots);
 				return slots;
 			});
@@ -775,9 +812,16 @@ class Prebook {
 	actionUpdateServiceSlots({
 		data,
 		reset,
-		office
+		office,
+		service,
+		date
 	}) {
-		return reset ? this.cacheServiceSlots(data) : this.iris.ticket_api.cacheServiceSlots(office, data);
+		let expiry = date ? moment(date)
+			.add(1, 'day')
+			.diff(moment(), 'seconds') : 0;
+		return reset ? this.cacheServiceSlots(data) : this.iris.ticket_api.cacheServiceSlots(office, service, date, data, {
+			expiry
+		});
 	}
 
 	cacheServiceSlots({
@@ -792,25 +836,20 @@ class Prebook {
 				s_count: 1
 			})
 			.then((res) => {
+				let expiry = moment(preprocessed.d_date)
+					.add(1, 'day')
+					.diff(moment(), 'seconds');
 				new_slots = _.map(res, t => {
 					return _.pick(t, ['time_description', 'operator', 'destination', 'source']);
 				});
-				return this.iris.ticket_api.getServiceSlotsCache(preprocessed.org_merged.id);
-			})
-			.then((slots) => {
 				// console.log("NEW SLOTS", require('util')
-				// 	.inspect(slots, {
+				// 	.inspect(new_slots, {
 				// 		depth: null
 				// 	}));
 
-				slots = _.mapValues(slots, (dates, srv) => {
-					return _.pickBy(dates, (data, day) => {
-						return day !== preprocessed.d_date.format("YYYY-MM-DD") && moment.tz(day, preprocessed.org_merged.org_timezone)
-							.isAfter(moment.tz(preprocessed.org_merged.org_timezone), 'day');
-					});
+				return this.iris.ticket_api.cacheServiceSlots(preprocessed.org_merged.id, preprocessed.srv.id, preprocessed.d_date.format("YYYY-MM-DD"), new_slots, {
+					expiry
 				});
-				_.set(slots, `${preprocessed.srv.id}.${preprocessed.d_date.format("YYYY-MM-DD")}`, new_slots);
-				return this.iris.ticket_api.cacheServiceSlots(preprocessed.org_merged.id, slots);
 			});
 	}
 
@@ -820,6 +859,7 @@ class Prebook {
 		s_count
 	}) {
 		// console.log("PRE CMP SS", preprocessed);
+		this.iris.transact();
 		return this.iris.observe({
 				operator: '*',
 				services: [{
@@ -835,27 +875,34 @@ class Prebook {
 				service_count: s_count,
 				method: 'prebook'
 			})
-			.then(res => _.values(res));
+			.then(res => {
+				this.iris.endTransact();
+				return _.values(res)
+			});
 	}
 
 	cacheServiceQuota(
 		preprocessed
 	) {
+		this.iris.transact();
 		let new_quota;
+		let day = preprocessed.d_date.format('YYYY-MM-DD');
+		let expiry = 30 * 24 * 3600;
 		return this.computeServiceQuota(preprocessed)
 			.then((res) => {
 				new_quota = res;
-				return this.services.getServiceQuota(preprocessed.org_merged.id);
-			})
-			.then((quota) => {
+				this.iris.endTransact();
 				// console.log("NEW QUOTA", new_quota[preprocessed.org_merged.id][preprocessed.srv.id]);
-				return this.services.cacheServiceQuota(preprocessed.org_merged.id, _.merge(quota, new_quota));
+				return this.services.cacheServiceQuota(preprocessed.org_merged.id, new_quota, {
+					expiry
+				});
 			});
 	}
 
 
 	computeServiceQuota(preprocessed) {
 		let quota;
+		let time = process.hrtime();
 		return this.iris.confirm({
 				operator: '*',
 				time_description: preprocessed.td,
@@ -867,6 +914,10 @@ class Prebook {
 				quota_status: true
 			})
 			.then((res) => {
+				let diff = process.hrtime(time);
+				console.log('PRE COMPUTE QUOTA LIVE IN %d seconds', diff[0] + diff[1] / 1e9);
+				time = process.hrtime();
+
 				quota = res.stats;
 				return this.iris.confirm({
 					operator: '*',
@@ -880,6 +931,9 @@ class Prebook {
 				});
 			})
 			.then((res) => {
+				let diff = process.hrtime(time);
+				console.log('PRE COMPUTE QUOTA PRE IN %d seconds', diff[0] + diff[1] / 1e9);
+				time = process.hrtime();
 				// console.log("QUOT", quota, res);
 				return _.merge(quota, res.stats);
 			});
@@ -887,21 +941,31 @@ class Prebook {
 
 	actionGetStats(data, replace = false) {
 		let days = _.castArray(data);
-		// console.log("DAYS", days);
 		let org = days[0].org_merged.id;
 		let srv = days[0].srv.id;
-		return this.services.getServiceQuota(org)
+		let dates = _.map(days, d => d.d_date.format('YYYY-MM-DD'));
+		let time = process.hrtime();
+		this.iris.transact();
+		return this.services.getServiceQuota(org, srv, dates)
 			.then((quota) => {
-				// console.log("QUOTA", quota);
+				let diff = process.hrtime(time);
+				console.log('PRE GET QUOTA IN %d seconds', diff[0] + diff[1] / 1e9);
+				time = process.hrtime();
+				console.log("QUOTA", require('util')
+					.inspect(quota, {
+						depth: null
+					}));
 				let days_missing = _.filter(days, (pre) => {
+					// return true;
 					return !_.has(quota, `${srv}.${pre.d_date.format("YYYY-MM-DD")}`) || pre.today;
 				});
-				return _.isEmpty(days_missing) ? quota : Promise.map(days_missing, (pre) => {
+				return _.isEmpty(days_missing) ? quota : Promise.mapSeries(days_missing, (pre) => {
 						return this.computeServiceQuota(pre);
-					}, {
-						concurrency: 5
 					})
 					.then((md) => {
+						let diff = process.hrtime(time);
+						console.log('PRE PRECOMPUTE QUOTA IN %d seconds', diff[0] + diff[1] / 1e9);
+						time = process.hrtime();
 						// console.log("MISSING", require('util')
 						// 	.inspect(md, {
 						// 		depth: null
@@ -916,6 +980,10 @@ class Prebook {
 					});
 			})
 			.then((days_quota) => {
+				let diff = process.hrtime(time);
+				console.log('PRE COMPUTE QUOTA IN %d seconds', diff[0] + diff[1] / 1e9);
+				time = process.hrtime();
+
 				// console.log("QUOTA", require('util')
 				// 	.inspect(days_quota, {
 				// 		depth: null
@@ -965,10 +1033,15 @@ class Prebook {
 				// 	.inspect(new_quota[org][srv], {
 				// 		depth: null
 				// 	}));
+				diff = process.hrtime(time);
+				console.log('PRE CONSTRUCT QUOTA IN %d seconds', diff[0] + diff[1] / 1e9);
+				time = process.hrtime();
+
 				this.emitter.emit("prebook.save.service.quota", {
 					data: new_quota,
 					office: org
 				});
+				this.iris.endTransact();
 				return result;
 			});
 	}
