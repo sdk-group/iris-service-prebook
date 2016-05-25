@@ -19,7 +19,7 @@ class Prebook {
 		this.warmup_throttle_hours = config.warmup_throttle_hours || 1;
 	}
 	launch() {
-			this.emitter.emit('taskrunner.add.task', {
+			this.emitter.command('taskrunner.add.task', {
 				time: this.prebook_check_interval,
 				task_name: "",
 				module_name: "prebook",
@@ -31,8 +31,8 @@ class Prebook {
 				}
 			});
 
-			this.emitter.on('prebook.save.service.quota', (data) => this.actionUpdateServiceQuota(data));
-			this.emitter.on('prebook.save.service.slots', (data) => this.actionUpdateServiceSlots(data));
+			this.emitter.listenTask('prebook.save.service.quota', (data) => this.actionUpdateServiceQuota(data));
+			this.emitter.listenTask('prebook.save.service.slots', (data) => this.actionUpdateServiceSlots(data));
 			return Promise.resolve(true);
 		}
 		//API
@@ -75,7 +75,7 @@ class Prebook {
 						auto: true
 					});
 				});
-				// this.emitter.emit('taskrunner.add.task', {
+				// this.emitter.command('taskrunner.add.task', {
 				// 	time: this.prebook_check_interval,
 				// 	task_name: "",
 				// 	module_name: "prebook",
@@ -375,11 +375,11 @@ class Prebook {
 				});
 			})
 			.then((res) => {
-				this.emitter.emit("prebook.save.service.quota", {
+				this.emitter.command("prebook.save.service.quota", {
 					data: org,
 					reset: true
 				});
-				this.emitter.emit("prebook.save.service.slots", {
+				this.emitter.command("prebook.save.service.slots", {
 					data: {
 						preprocessed: org,
 						count,
@@ -405,7 +405,7 @@ class Prebook {
 								let tick = res[0];
 								console.log("TICKET CNF", tick);
 
-								this.emitter.emit('taskrunner.add.task', {
+								this.emitter.command('taskrunner.add.task', {
 									time: diff / 1000,
 									task_name: "",
 									module_name: "queue",
@@ -679,7 +679,7 @@ class Prebook {
 				let diff = process.hrtime(time);
 				console.log('AVDAYS CACHE WARMUP %d nanoseconds', diff[0] * 1e9 + diff[1]);
 
-				this.emitter.emit("prebook.save.service.quota", {
+				this.emitter.command("prebook.save.service.quota", {
 					data: days_quota,
 					office: org.org_merged.id
 				});
@@ -742,7 +742,7 @@ class Prebook {
 				time = process.hrtime();
 
 
-				this.emitter.emit("prebook.save.service.slots", {
+				this.emitter.command("prebook.save.service.slots", {
 					office: preprocessed.org_merged.id,
 					service: preprocessed.srv.id,
 					date: preprocessed.d_date.format("YYYY-MM-DD"),
@@ -1037,7 +1037,7 @@ class Prebook {
 				console.log('PRE CONSTRUCT QUOTA IN %d seconds', diff[0] + diff[1] / 1e9);
 				time = process.hrtime();
 
-				this.emitter.emit("prebook.save.service.quota", {
+				this.emitter.command("prebook.save.service.quota", {
 					data: new_quota,
 					office: org
 				});
