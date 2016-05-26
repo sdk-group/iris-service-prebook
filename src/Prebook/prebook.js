@@ -405,6 +405,13 @@ class Prebook {
 								let tick = res[0];
 								console.log("TICKET CNF", tick);
 
+								this.emitter.command('ticket.emit.state', {
+									org_addr: org.org_addr,
+									ticket: tick,
+									event_name,
+									workstation
+								});
+
 								this.emitter.command('taskrunner.add.task', {
 									time: diff / 1000,
 									task_name: "",
@@ -647,8 +654,8 @@ class Prebook {
 				// 	.inspect(days_quota, {
 				// 		depth: null
 				// 	}));
-				days_quota = _.mapValues(days_quota, (srv_q, srv_id) => {
-					return _.pickBy(_.mapValues(srv_q, (date_q, date) => {
+				days_quota =
+					_.pickBy(_.mapValues(days_quota, (date_q, date) => {
 						return _.defaultsDeep(date_q, {
 							max_available: {
 								live: 0,
@@ -659,6 +666,10 @@ class Prebook {
 								prebook: 0
 							},
 							reserved: 0,
+							reserved_per_service: _.reduce(srv, (acc, s) => {
+								acc[s] = 0;
+								return acc;
+							}, {}),
 							max_solid: {
 								live: 0,
 								prebook: 0
@@ -670,7 +681,6 @@ class Prebook {
 						return moment.tz(day, min.org_merged.org_timezone)
 							.isAfter(moment.tz(min.org_merged.org_timezone), 'day');
 					});
-				});
 
 				// console.log(require('util')
 				// 	.inspect(days_quota, {
@@ -946,7 +956,7 @@ class Prebook {
 		let dates = _.map(days, d => d.d_date.format('YYYY-MM-DD'));
 		let time = process.hrtime();
 		this.iris.transact();
-		return this.services.getServiceQuota(org, srv, dates)
+		return this.services.getServiceQuota(org, dates)
 			.then((quota) => {
 				let diff = process.hrtime(time);
 				console.log('PRE GET QUOTA IN %d seconds', diff[0] + diff[1] / 1e9);
@@ -957,7 +967,7 @@ class Prebook {
 					}));
 				let days_missing = _.filter(days, (pre) => {
 					// return true;
-					return !_.has(quota, `${srv}.${pre.d_date.format("YYYY-MM-DD")}`) || pre.today;
+					return !_.has(quota, `${pre.d_date.format("YYYY-MM-DD")}`) || pre.today;
 				});
 				return _.isEmpty(days_missing) ? quota : Promise.mapSeries(days_missing, (pre) => {
 						return this.computeServiceQuota(pre);
@@ -972,8 +982,8 @@ class Prebook {
 						// 	}));
 						return _.reduce(md, (acc, res, index) => {
 							let pre = days_missing[index];
-							let q = _.get(res, `${srv}.${pre.d_date.format("YYYY-MM-DD")}`, {});
-							_.set(res, `${srv}.${pre.d_date.format("YYYY-MM-DD")}`, q);
+							let q = _.get(res, `${pre.d_date.format("YYYY-MM-DD")}`, {});
+							_.set(res, `${pre.d_date.format("YYYY-MM-DD")}`, q);
 							// console.log("MISSING", acc, pre.d_date.format("YYYY-MM-DD"));
 							return _.merge(acc, res);
 						}, quota || {});
@@ -994,7 +1004,7 @@ class Prebook {
 					part = _.clamp(part, 0, 100) / 100;
 					let date = pre.d_date.format("YYYY-MM-DD");
 					preserve.push(date);
-					let stats = _.get(days_quota, `${srv}.${date}`);
+					let stats = _.get(days_quota, `${date}`);
 					_.defaultsDeep(stats, {
 						max_available: {
 							live: 0,
@@ -1005,12 +1015,13 @@ class Prebook {
 							prebook: 0
 						},
 						reserved: 0,
+						reserved_per_service: {},
 						max_solid: {
 							live: 0,
 							prebook: 0
 						}
 					});
-					let success = !!(stats.max_available.live * part) && ((stats.max_available.live * part) >= (stats.reserved));
+					let success = !!(stats.max_available.live * part) && ((stats.max_available.live * part) >= (stats.reserved_per_service[srv] || 0));
 					// console.log("STATS", part, stats, `${org}.${srv}.${date}`, !!(stats.max_available.live * part) && (stats.max_available.live * part >= (stats.reserved)), stats.max_available.live * part, (stats.reserved));
 					return {
 						success,
@@ -1021,12 +1032,11 @@ class Prebook {
 				});
 				let new_quota = days_quota;
 				if (replace) {
-					let all = _.keys(_.get(days_quota, `${srv}`));
 					let min = _.minBy(days, day => day.d_date.format('x'));
-					_.set(new_quota, `${srv}`, _.pickBy(_.get(days_quota, `${srv}`), (data, day) => {
+					new_quota = _.pickBy(days_quota, (data, day) => {
 						return moment.tz(day, min.org_merged.org_timezone)
 							.isAfter(moment(min.d_date), 'day') || !!~_.indexOf(preserve, day);
-					}));
+					});
 				}
 				// console.log("CHECKING", preserve);
 				// console.log(require('util')
