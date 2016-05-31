@@ -538,7 +538,7 @@ class Prebook {
 					let pre = val.data;
 					// console.log("OBSERVING PREBOOK II", val.solid, val.success, s_count, pre.srv.prebook_operation_time, (val.solid.prebook >= pre.srv.prebook_operation_time * s_count), pre.d_date.format("YYYY-MM-DD"));
 					let local_key = pre.d_date.format();
-					acc[local_key] = val.success && val.solid.prebook && (val.solid.prebook >= pre.srv.prebook_operation_time * s_count);
+					acc[local_key] = val.success && val.available_slots.prebook && (val.available_slots.prebook >= s_count);
 					return acc;
 				}, {});
 				return Promise.props(promises);
@@ -654,8 +654,8 @@ class Prebook {
 				// 	.inspect(days_quota, {
 				// 		depth: null
 				// 	}));
-				days_quota =
-					_.pickBy(_.mapValues(days_quota, (date_q, date) => {
+				days_quota = _.mapValues(days_quota, (srv_q, srv_id) => {
+					return _.pickBy(_.mapValues(srv_q, (date_q, date) => {
 						return _.defaultsDeep(date_q, {
 							max_available: {
 								live: 0,
@@ -666,11 +666,7 @@ class Prebook {
 								prebook: 0
 							},
 							reserved: 0,
-							reserved_per_service: _.reduce(srv, (acc, s) => {
-								acc[s] = 0;
-								return acc;
-							}, {}),
-							max_solid: {
+							available_slots: {
 								live: 0,
 								prebook: 0
 							}
@@ -681,6 +677,7 @@ class Prebook {
 						return moment.tz(day, min.org_merged.org_timezone)
 							.isAfter(moment.tz(min.org_merged.org_timezone), 'day');
 					});
+				});
 
 				// console.log(require('util')
 				// 	.inspect(days_quota, {
@@ -956,7 +953,7 @@ class Prebook {
 		let dates = _.map(days, d => d.d_date.format('YYYY-MM-DD'));
 		let time = process.hrtime();
 		this.iris.transact();
-		return this.services.getServiceQuota(org, dates)
+		return this.services.getServiceQuota(org, srv, dates)
 			.then((quota) => {
 				let diff = process.hrtime(time);
 				console.log('PRE GET QUOTA IN %d seconds', diff[0] + diff[1] / 1e9);
@@ -967,7 +964,7 @@ class Prebook {
 					}));
 				let days_missing = _.filter(days, (pre) => {
 					// return true;
-					return !_.has(quota, `${pre.d_date.format("YYYY-MM-DD")}`) || pre.today;
+					return !_.has(quota, `${srv}.${pre.d_date.format("YYYY-MM-DD")}`) || pre.today;
 				});
 				return _.isEmpty(days_missing) ? quota : Promise.mapSeries(days_missing, (pre) => {
 						return this.computeServiceQuota(pre);
@@ -982,8 +979,8 @@ class Prebook {
 						// 	}));
 						return _.reduce(md, (acc, res, index) => {
 							let pre = days_missing[index];
-							let q = _.get(res, `${pre.d_date.format("YYYY-MM-DD")}`, {});
-							_.set(res, `${pre.d_date.format("YYYY-MM-DD")}`, q);
+							let q = _.get(res, `${srv}.${pre.d_date.format("YYYY-MM-DD")}`, {});
+							_.set(res, `${srv}.${pre.d_date.format("YYYY-MM-DD")}`, q);
 							// console.log("MISSING", acc, pre.d_date.format("YYYY-MM-DD"));
 							return _.merge(acc, res);
 						}, quota || {});
@@ -1004,7 +1001,7 @@ class Prebook {
 					part = _.clamp(part, 0, 100) / 100;
 					let date = pre.d_date.format("YYYY-MM-DD");
 					preserve.push(date);
-					let stats = _.get(days_quota, `${date}`);
+					let stats = _.get(days_quota, `${srv}.${date}`);
 					_.defaultsDeep(stats, {
 						max_available: {
 							live: 0,
@@ -1015,28 +1012,27 @@ class Prebook {
 							prebook: 0
 						},
 						reserved: 0,
-						reserved_per_service: {},
-						max_solid: {
+						available_slots: {
 							live: 0,
 							prebook: 0
 						}
 					});
-					let success = !!(stats.max_available.live * part) && ((stats.max_available.live * part) >= (stats.reserved_per_service[srv] || 0));
+					let success = !!(stats.max_available.live * part) && ((stats.max_available.live * part) >= (stats.reserved));
 					// console.log("STATS", part, stats, `${org}.${srv}.${date}`, !!(stats.max_available.live * part) && (stats.max_available.live * part >= (stats.reserved)), stats.max_available.live * part, (stats.reserved));
 					return {
 						success,
 						available: stats.available,
-						solid: stats.max_solid,
+						available_slots: stats.available_slots,
 						data: pre
 					};
 				});
 				let new_quota = days_quota;
 				if (replace) {
 					let min = _.minBy(days, day => day.d_date.format('x'));
-					new_quota = _.pickBy(days_quota, (data, day) => {
+					_.set(new_quota, `${srv}`, _.pickBy(_.get(days_quota, `${srv}`), (data, day) => {
 						return moment.tz(day, min.org_merged.org_timezone)
 							.isAfter(moment(min.d_date), 'day') || !!~_.indexOf(preserve, day);
-					});
+					}));
 				}
 				// console.log("CHECKING", preserve);
 				// console.log(require('util')
