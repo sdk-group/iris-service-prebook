@@ -946,6 +946,32 @@ class Prebook {
 			});
 	}
 
+	actionServiceStats({
+		workstation,
+		service,
+		date
+	}) {
+		let org;
+		let dates = date ? moment(date)
+			.format('YYYY-MM-DD') : moment()
+			.format('YYYY-MM-DD');
+		return Promise.props({
+				pre: this.actionWorkstationOrganizationData({
+					workstation,
+					embed_schedules: true
+				}),
+				srv: service ? Promise.resolve(_.castArray(service)) : this.services.getServiceIds()
+			})
+			.then(({
+				pre,
+				srv
+			}) => {
+				org = pre;
+				return this.services.getServiceQuota(org.org_merged.id, srv, dates);
+			})
+			.then((res) => res[org.org_merged.id]);
+	}
+
 	actionGetStats(data, replace = false) {
 		let days = _.castArray(data);
 		let org = days[0].org_merged.id;
