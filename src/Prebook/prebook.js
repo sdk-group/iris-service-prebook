@@ -968,8 +968,7 @@ class Prebook {
 			}) => {
 				org = pre;
 				return this.services.getServiceQuota(org.org_merged.id, srv, dates);
-			})
-			.then((res) => res[org.org_merged.id]);
+			});
 	}
 
 	actionGetStats(data, replace = false) {
@@ -984,10 +983,10 @@ class Prebook {
 				let diff = process.hrtime(time);
 				console.log('PRE GET QUOTA IN %d seconds', diff[0] + diff[1] / 1e9);
 				time = process.hrtime();
-				console.log("QUOTA", require('util')
-					.inspect(quota, {
-						depth: null
-					}));
+				// console.log("QUOTA", require('util')
+				// 	.inspect(quota, {
+				// 		depth: null
+				// 	}));
 				let days_missing = _.filter(days, (pre) => {
 					// return true;
 					return !_.has(quota, `${srv}.${pre.d_date.format("YYYY-MM-DD")}`) || pre.today;
