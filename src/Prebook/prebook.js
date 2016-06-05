@@ -88,6 +88,11 @@ class Prebook {
 				return Promise.all(p);
 			})
 			.catch((err) => {
+				global.logger && logger.error(
+					err, {
+						module: 'prebook',
+						method: 'expiration-check'
+					});
 				console.log("EXPIRATION CHECK ERR", err.stack);
 				return false;
 			});
@@ -200,9 +205,6 @@ class Prebook {
 					}),
 					done
 				};
-			})
-			.catch(err => {
-				console.log("PREBOOK TERM PREPARE ERR", err.stack);
 			});
 	}
 	preparePrebookProcessing({
@@ -434,6 +436,12 @@ class Prebook {
 			.catch((err) => {
 				this.iris.endTransact();
 				console.log("PB CONFIRM ERR!", err.stack);
+				global.logger && logger.error(
+					err, {
+						module: 'prebook',
+						method: 'confirm'
+					}
+				);
 				return {
 					success: false,
 					reason: err.message
@@ -498,6 +506,11 @@ class Prebook {
 			.catch((err) => {
 				console.log("PRE OBSERVE ERR!", err.stack);
 				this.iris.endTransact();
+				global.logger && logger.error(
+					err, {
+						module: 'prebook',
+						method: 'observe'
+					});
 				return {
 					success: false,
 					reason: err.message
@@ -564,6 +577,11 @@ class Prebook {
 			})
 			.catch((err) => {
 				console.log("PRE OBSERVE ERR!", err.stack);
+				global.logger && logger.error(
+					err, {
+						module: 'prebook',
+						method: 'available-days'
+					});
 				return {
 					success: false,
 					reason: err.message
@@ -685,6 +703,7 @@ class Prebook {
 				// 	}));
 				let diff = process.hrtime(time);
 				console.log('AVDAYS CACHE WARMUP %d nanoseconds', diff[0] * 1e9 + diff[1]);
+				global.logger && logger.info('AVDAYS CACHE WARMUP %d nanoseconds', diff[0] * 1e9 + diff[1]);
 
 				this.emitter.command("prebook.save.service.quota", {
 					data: days_quota,
@@ -698,6 +717,12 @@ class Prebook {
 				console.log("WARMUP FAILED", err.message);
 				if (err.message == 'success')
 					return Promise.resolve(true);
+				global.logger && logger.error(
+					err, {
+						module: 'prebook',
+						method: 'warmup'
+					});
+
 				return Promise.reject(new Error("Warmup."));
 			});
 
@@ -911,7 +936,7 @@ class Prebook {
 		let quota;
 		let time = process.hrtime();
 		return this.iris.confirm({
-				operator: '*',
+				operator: preprocessed.operator || '*',
 				time_description: preprocessed.td,
 				dedicated_date: preprocessed.d_date,
 				service_keys: this.services.getSystemName('registry', 'service'),
