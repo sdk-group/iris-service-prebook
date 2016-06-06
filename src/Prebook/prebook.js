@@ -598,6 +598,7 @@ class Prebook {
 		let days;
 		let org;
 		let srv;
+
 		this.iris.transact();
 		return Promise.props({
 				org: this.actionWorkstationOrganizationData({
@@ -690,8 +691,7 @@ class Prebook {
 							}
 						});
 					}), (data, day) => {
-						// console.log("ISAFTER", day, moment.tz(day, min.org_merged.org_timezone)
-						// 	.isAfter(moment.tz(min.org_merged.org_timezone)));
+						// console.log("ISAFTER", day, data);
 						return moment.tz(day, min.org_merged.org_timezone)
 							.isAfter(moment.tz(min.org_merged.org_timezone), 'day');
 					});
@@ -936,7 +936,6 @@ class Prebook {
 		let quota;
 		let time = process.hrtime();
 		return this.iris.confirm({
-				operator: preprocessed.operator || '*',
 				time_description: preprocessed.td,
 				dedicated_date: preprocessed.d_date,
 				service_keys: this.services.getSystemName('registry', 'service'),
@@ -1014,7 +1013,7 @@ class Prebook {
 				// 	}));
 				let days_missing = _.filter(days, (pre) => {
 					// return true;
-					return !_.has(quota, `${srv}.${pre.d_date.format("YYYY-MM-DD")}`) || pre.today;
+					return !_.has(quota, `${srv}.${pre.d_date.format("YYYY-MM-DD")}`) || pre.today && !!_.parseInt(days[0].srv.prebook_today_percentage);
 				});
 				return _.isEmpty(days_missing) ? quota : Promise.mapSeries(days_missing, (pre) => {
 						return this.computeServiceQuota(pre);
