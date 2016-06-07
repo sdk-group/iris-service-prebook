@@ -17,6 +17,7 @@ class Prebook {
 		this.services.initContent();
 		this.prebook_check_interval = config.prebook_check_interval || 30;
 		this.warmup_throttle_hours = config.warmup_throttle_hours || 1;
+		this.service_quota_flag_expiry = config.service_quota_flag_expiry || 300;
 	}
 	launch() {
 			this.emitter.command('taskrunner.add.task', {
@@ -267,7 +268,6 @@ class Prebook {
 		let s_count = _.parseInt(service_count) || 1;
 		let count = 1;
 		let context = {};
-		this.iris.transact();
 		return Promise.props({
 				pre: this.preparePrebookProcessing({
 					workstation,
@@ -390,7 +390,6 @@ class Prebook {
 					reset: true
 				});
 				// console.log("CONFIRMING", res);
-				this.iris.endTransact();
 
 				return Promise.props({
 					lookup: Promise.map(_.values(res.placed), (tick) => {
@@ -434,7 +433,6 @@ class Prebook {
 				});
 			})
 			.catch((err) => {
-				this.iris.endTransact();
 				console.log("PB CONFIRM ERR!", err.stack);
 				global.logger && logger.error(
 					err, {
@@ -459,7 +457,6 @@ class Prebook {
 		let org;
 		let s_count = _.parseInt(service_count) || 1;
 		let time = process.hrtime();
-		this.iris.transact();
 		return this.preparePrebookProcessing({
 				workstation,
 				service,
@@ -497,7 +494,6 @@ class Prebook {
 				// 	}));
 				let diff = process.hrtime(time);
 				console.log('PRE OBSERVE DONE IN  %d seconds', diff[0] + diff[1] / 1e9);
-				this.iris.endTransact();
 				return {
 					slots: res,
 					success: !!_.size(res)
@@ -505,7 +501,6 @@ class Prebook {
 			})
 			.catch((err) => {
 				console.log("PRE OBSERVE ERR!", err.stack);
-				this.iris.endTransact();
 				global.logger && logger.error(
 					err, {
 						module: 'prebook',
@@ -529,7 +524,6 @@ class Prebook {
 		let time = process.hrtime();
 		// console.log("OBSERVING AVDAYS PREBOOK", service, workstation, start, end);
 		let s_count = _.parseInt(service_count) || 1;
-		this.iris.transact();
 		return this.prepareAvailableDaysProcessing({
 				workstation,
 				service,
@@ -551,7 +545,7 @@ class Prebook {
 					let pre = val.data;
 					// console.log("OBSERVING PREBOOK II", val.solid, val.success, s_count, pre.srv.prebook_operation_time, (val.solid.prebook >= pre.srv.prebook_operation_time * s_count), pre.d_date.format("YYYY-MM-DD"));
 					let local_key = pre.d_date.format();
-					acc[local_key] = val.success && val.available_slots.prebook && (val.available_slots.prebook >= s_count);
+					acc[local_key] = val.success && val.max_solid.prebook && (val.max_solid.prebook >= pre.srv.prebook_operation_time * s_count);
 					return acc;
 				}, {});
 				return Promise.props(promises);
@@ -563,7 +557,6 @@ class Prebook {
 				// 	}));
 				let diff = process.hrtime(time);
 				console.log('AVDAYS DONE IN  %d nanoseconds', diff[0] * 1e9 + diff[1]);
-				this.iris.endTransact();
 				return {
 					success: true,
 					done,
@@ -599,7 +592,6 @@ class Prebook {
 		let org;
 		let srv;
 
-		this.iris.transact();
 		return Promise.props({
 				org: this.actionWorkstationOrganizationData({
 					workstation,
@@ -617,12 +609,13 @@ class Prebook {
 				// console.log("RES Q C", res);
 				if (_.isBoolean(res) && !res)
 					return Promise.reject(new Error('success'));
-				return this.services.lockQuota(org.org_merged.id);
+				return this.services.lockQuota(org.org_merged.id, this.service_quota_flag_expiry);
 			})
 			.then((res) => {
 				// console.log("LOCKED");
 				if (!res)
 					return Promise.reject(new Error("Quota is locked."));
+				logger.error('WARMUP START');
 
 				let d_start = moment()
 					.add(start, 'days');
@@ -685,7 +678,7 @@ class Prebook {
 								prebook: 0
 							},
 							reserved: 0,
-							available_slots: {
+							max_solid: {
 								live: 0,
 								prebook: 0
 							}
@@ -701,27 +694,31 @@ class Prebook {
 				// 	.inspect(days_quota, {
 				// 		depth: null
 				// 	}));
+
+				logger.error(days_quota)
+
 				let diff = process.hrtime(time);
 				console.log('AVDAYS CACHE WARMUP %d nanoseconds', diff[0] * 1e9 + diff[1]);
 				global.logger && logger.info('AVDAYS CACHE WARMUP %d nanoseconds', diff[0] * 1e9 + diff[1]);
 
-				this.emitter.command("prebook.save.service.quota", {
+				return this.actionUpdateServiceQuota({
 					data: days_quota,
 					office: org.org_merged.id
 				});
-				this.iris.endTransact();
+			})
+			.then((res) => {
 				return this.services.unlockQuota(org.org_merged.id);
 			})
 			.catch(err => {
-				this.iris.endTransact();
 				console.log("WARMUP FAILED", err.message);
 				if (err.message == 'success')
 					return Promise.resolve(true);
-				global.logger && logger.error(
-					err, {
-						module: 'prebook',
-						method: 'warmup'
-					});
+				if (!err.message == 'Quota is locked.')
+					global.logger && logger.error(
+						err, {
+							module: 'prebook',
+							method: 'warmup'
+						});
 
 				return Promise.reject(new Error("Warmup."));
 			});
@@ -891,7 +888,6 @@ class Prebook {
 		s_count
 	}) {
 		// console.log("PRE CMP SS", preprocessed);
-		this.iris.transact();
 		return this.iris.observe({
 				operator: '*',
 				services: [{
@@ -908,7 +904,6 @@ class Prebook {
 				method: 'prebook'
 			})
 			.then(res => {
-				this.iris.endTransact();
 				return _.values(res)
 			});
 	}
@@ -916,14 +911,12 @@ class Prebook {
 	cacheServiceQuota(
 		preprocessed
 	) {
-		this.iris.transact();
 		let new_quota;
 		let day = preprocessed.d_date.format('YYYY-MM-DD');
 		let expiry = 30 * 24 * 3600;
 		return this.computeServiceQuota(preprocessed)
 			.then((res) => {
 				new_quota = res;
-				this.iris.endTransact();
 				// console.log("NEW QUOTA", new_quota[preprocessed.org_merged.id][preprocessed.srv.id]);
 				return this.services.cacheServiceQuota(preprocessed.org_merged.id, new_quota, {
 					expiry
@@ -936,6 +929,7 @@ class Prebook {
 		let quota;
 		let time = process.hrtime();
 		return this.iris.confirm({
+				operator: '*',
 				time_description: preprocessed.td,
 				dedicated_date: preprocessed.d_date,
 				service_keys: this.services.getSystemName('registry', 'service'),
@@ -965,7 +959,7 @@ class Prebook {
 				let diff = process.hrtime(time);
 				console.log('PRE COMPUTE QUOTA PRE IN %d seconds', diff[0] + diff[1] / 1e9);
 				time = process.hrtime();
-				// console.log("QUOT", quota, res);
+				// console.log("QUOT", res.stats['service-67'], quota['service-67']);
 				return _.merge(quota, res.stats);
 			});
 	}
@@ -1001,7 +995,6 @@ class Prebook {
 		let srv = days[0].srv.id;
 		let dates = _.map(days, d => d.d_date.format('YYYY-MM-DD'));
 		let time = process.hrtime();
-		this.iris.transact();
 		return this.services.getServiceQuota(org, srv, dates)
 			.then((quota) => {
 				let diff = process.hrtime(time);
@@ -1061,7 +1054,7 @@ class Prebook {
 							prebook: 0
 						},
 						reserved: 0,
-						available_slots: {
+						max_solid: {
 							live: 0,
 							prebook: 0
 						}
@@ -1071,7 +1064,7 @@ class Prebook {
 					return {
 						success,
 						available: stats.available,
-						available_slots: stats.available_slots,
+						max_solid: stats.max_solid,
 						data: pre
 					};
 				});
@@ -1096,7 +1089,6 @@ class Prebook {
 					data: new_quota,
 					office: org
 				});
-				this.iris.endTransact();
 				return result;
 			});
 	}
