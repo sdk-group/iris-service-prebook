@@ -695,8 +695,6 @@ class Prebook {
 				// 		depth: null
 				// 	}));
 
-				logger.error(days_quota)
-
 				let diff = process.hrtime(time);
 				console.log('AVDAYS CACHE WARMUP %d nanoseconds', diff[0] * 1e9 + diff[1]);
 				global.logger && logger.info('AVDAYS CACHE WARMUP %d nanoseconds', diff[0] * 1e9 + diff[1]);
@@ -710,7 +708,7 @@ class Prebook {
 				return this.services.unlockQuota(org.org_merged.id);
 			})
 			.catch(err => {
-				console.log("WARMUP FAILED", err.message);
+			console.log("WARMUP FAILED", err.message);
 				if (err.message == 'success')
 					return Promise.resolve(true);
 				if (!err.message == 'Quota is locked.')
