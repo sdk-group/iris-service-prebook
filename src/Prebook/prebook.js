@@ -406,7 +406,7 @@ class Prebook {
 								let tick = res[0];
 								console.log("TICKET CNF", tick);
 
-								this.emitter.command('ticket.emit.state', {
+								this.emitter.emit('ticket.emit.state', {
 									org_addr: org.org_addr,
 									ticket: tick,
 									event_name,
@@ -708,7 +708,7 @@ class Prebook {
 				return this.services.unlockQuota(org.org_merged.id);
 			})
 			.catch(err => {
-			console.log("WARMUP FAILED", err.message);
+				console.log("WARMUP FAILED", err.message);
 				if (err.message == 'success')
 					return Promise.resolve(true);
 				if (!err.message == 'Quota is locked.')
