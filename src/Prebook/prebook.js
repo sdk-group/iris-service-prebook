@@ -408,6 +408,7 @@ class Prebook {
 
 								this.emitter.emit('ticket.emit.state', {
 									org_addr: org.org_addr,
+									org_merged: org.org_merged,
 									ticket: tick,
 									event_name,
 									workstation
