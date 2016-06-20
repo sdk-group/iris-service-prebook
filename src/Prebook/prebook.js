@@ -16,8 +16,8 @@ class Prebook {
 		this.services = new ServiceApi();
 		this.services.initContent();
 		this.prebook_check_interval = config.prebook_check_interval || 30;
-		this.warmup_throttle_hours = config.warmup_throttle_hours || 1;
-		this.service_quota_flag_expiry = config.service_quota_flag_expiry || 300;
+		this.warmup_throttle_hours = config.warmup_throttle_hours || 24;
+		this.service_quota_flag_expiry = config.service_quota_flag_expiry || 1800;
 	}
 	launch() {
 			this.emitter.command('taskrunner.add.task', {
