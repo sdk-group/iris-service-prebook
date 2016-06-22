@@ -34,7 +34,16 @@ class Prebook {
 
 			this.emitter.listenTask('prebook.save.service.quota', (data) => this.actionUpdateServiceQuota(data));
 			this.emitter.listenTask('prebook.save.service.slots', (data) => this.actionUpdateServiceSlots(data));
-			return Promise.resolve(true);
+
+			return this.emitter.addTask('workstation', {
+					_action: 'organization-timezones'
+				})
+				.then((res) => {
+					return this.actionScheduleWarmupAll({
+						organization: _.keys(res)
+					});
+				})
+				.then(res => true);
 		}
 		//API
 	actionExpirationCheck({
@@ -98,6 +107,70 @@ class Prebook {
 				return false;
 			});
 	}
+
+	actionScheduleWarmupAll({
+		organization
+	}) {
+		return this.emitter.addTask('workstation', {
+				_action: 'organization-data',
+				organization,
+				embed_schedules: true
+			})
+			.then((res) => {
+				let to_warmup = _.filter(res, org => !_.isUndefined(org.org_merged.auto_warmup_time) && !_.isEmpty(org.org_merged.has_schedule));
+				let times = {};
+				_.map(to_warmup, (org) => {
+					let t = moment.tz(org.org_merged.auto_warmup_time, 'HH:mm', org.org_merged.org_timezone);
+					let tm = t.diff(moment.tz(org.org_merged.org_timezone), 'seconds') % 86400;
+					if (tm <= 0) tm = 86400 + tm;
+					times[tm] = times[tm] || [];
+					times[tm].push(org.org_merged.id);
+				});
+				_.map(times, (orgs, tm) => {
+					this.emitter.addTask('taskrunner.add.task', {
+						time: tm,
+						task_name: "",
+						solo: true,
+						ahead: false,
+						module_name: "prebook",
+						task_id: "auto-warmup-all",
+						task_type: "add-task",
+						ahead: false,
+						params: {
+							_action: "auto-warmup-all",
+							organization: _.pick(res, orgs)
+						}
+					});
+
+				});
+				return true;
+			});
+	}
+
+	actionAutoWarmupAll({
+		organization
+	}) {
+		this.actionScheduleWarmupAll({
+			organization: _.keys(organization)
+		});
+		return this.actionWarmupAll({
+			organization
+		});
+	}
+
+	actionWarmupAll({
+		organization
+	}) {
+		return Promise.mapSeries(_.values(organization), (organization_data) => {
+			return this.actionWarmupDaysCache({
+					organization_data,
+					start: 0,
+					end: 32
+				})
+				.catch(err => true);
+		});
+	}
+
 	getTickets({
 		query,
 		keys
@@ -123,6 +196,7 @@ class Prebook {
 			})
 			.then(res => res[workstation]);
 	}
+
 	getDates({
 		dedicated_date,
 		tz,
@@ -585,6 +659,7 @@ class Prebook {
 
 	actionWarmupDaysCache({
 		workstation,
+		organization_data,
 		start,
 		end
 	}) {
@@ -594,10 +669,11 @@ class Prebook {
 		let srv;
 
 		return Promise.props({
-				org: this.actionWorkstationOrganizationData({
-					workstation,
-					embed_schedules: true
-				}),
+				org: organization_data ||
+					this.actionWorkstationOrganizationData({
+						workstation,
+						embed_schedules: true
+					}),
 				srv: this.services.getServiceIds()
 			})
 			.then((org_data) => {
