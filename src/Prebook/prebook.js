@@ -161,6 +161,11 @@ class Prebook {
 	actionWarmupAll({
 		organization
 	}) {
+		global.logger && logger.info({
+			module: 'prebook',
+			method: 'warmup-all',
+			organization
+		}, 'Auto-warmup: ');
 		return Promise.mapSeries(_.values(organization), (organization_data) => {
 			return this.actionWarmupDaysCache({
 					organization_data,
