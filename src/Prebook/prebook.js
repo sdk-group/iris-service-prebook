@@ -123,25 +123,22 @@ class Prebook {
 					let t = moment.tz(org.org_merged.auto_warmup_time, 'HH:mm', org.org_merged.org_timezone);
 					let tm = t.diff(moment.tz(org.org_merged.org_timezone), 'seconds') % 86400;
 					if (tm <= 0) tm = 86400 + tm;
-					times[tm] = times[tm] || [];
-					times[tm].push(org.org_merged.id);
-				});
-				_.map(times, (orgs, tm) => {
+					let org_id = org.org_merged.id;
 					this.emitter.addTask('taskrunner.add.task', {
 						time: tm,
 						task_name: "",
-						solo: true,
 						ahead: false,
+						solo: true,
+						cancellation_code: org_id,
 						module_name: "prebook",
 						task_id: "auto-warmup-all",
 						task_type: "add-task",
 						ahead: false,
 						params: {
 							_action: "auto-warmup-all",
-							organization: _.pick(res, orgs)
+							organization: _.pick(res, org_id)
 						}
 					});
-
 				});
 				return true;
 			});
@@ -456,6 +453,8 @@ class Prebook {
 				});
 			})
 			.then((res) => {
+				if (!_.isEmpty(res.lost))
+					throw new Error("Failed to place ticket.");
 				this.emitter.command("prebook.save.service.quota", {
 					data: org,
 					reset: true
