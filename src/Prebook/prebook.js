@@ -454,7 +454,7 @@ class Prebook {
 			})
 			.then((res) => {
 				if (!_.isEmpty(res.lost))
-					throw new Error("Failed to place ticket.");
+					return Promise.reject(new Error('Failed to place a ticket.'));
 				this.emitter.command("prebook.save.service.quota", {
 					data: org,
 					reset: true
