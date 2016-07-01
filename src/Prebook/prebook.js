@@ -4,8 +4,10 @@ let BookingApi = require('resource-management-framework')
 	.BookingApi;
 let ServiceApi = require('resource-management-framework')
 	.ServiceApi;
+let Patchwerk = require('patchwerk');
 let moment = require('moment-timezone');
 require('moment-range');
+
 class Prebook {
 	constructor() {
 		this.emitter = message_bus;
@@ -15,6 +17,8 @@ class Prebook {
 		this.iris.initContent();
 		this.services = new ServiceApi();
 		this.services.initContent();
+		this.patchwerk = Patchwerk(message_bus);
+
 		this.prebook_check_interval = config.prebook_check_interval || 30;
 		this.warmup_throttle_hours = config.warmup_throttle_hours || 24;
 		this.service_quota_flag_expiry = config.service_quota_flag_expiry || 1800;
@@ -26,7 +30,7 @@ class Prebook {
 				module_name: "prebook",
 				task_type: "add-task",
 				solo: true,
-				regular: true,
+				// regular: true,
 				params: {
 					_action: "expiration-check"
 				}
@@ -49,6 +53,17 @@ class Prebook {
 	actionExpirationCheck({
 		ts_now
 	}) {
+		this.emitter.command('taskrunner.add.task', {
+			time: this.prebook_check_interval,
+			task_name: "",
+			module_name: "prebook",
+			task_type: "add-task",
+			solo: true,
+			// regular: true,
+			params: {
+				_action: "expiration-check"
+			}
+		});
 		return this.emitter.addTask('workstation', {
 				_action: 'organization-timezones'
 			})
@@ -85,16 +100,6 @@ class Prebook {
 						auto: true
 					});
 				});
-				// this.emitter.command('taskrunner.add.task', {
-				// 	time: this.prebook_check_interval,
-				// 	task_name: "",
-				// 	module_name: "prebook",
-				// 	task_type: "add-task",
-				// 	solo: true,
-				// 	params: {
-				// 		_action: "expiration-check"
-				// 	}
-				// });
 				return Promise.all(p);
 			})
 			.catch((err) => {
@@ -274,6 +279,7 @@ class Prebook {
 							org_merged: org_data.org_merged,
 							org_chain: org_data.org_chain,
 							srv,
+							service,
 							d_date: dates.d_date,
 							b_date: dates.b_date,
 							td: dates.td,
@@ -290,20 +296,19 @@ class Prebook {
 		dedicated_date,
 		offset = true
 	}) {
-		return Promise.props({
-				org_data: this.actionWorkstationOrganizationData({
-					workstation,
-					embed_schedules: true
-				}),
-				srv: this.services.getService({
-						keys: service
-					})
-					.then(res => res[service])
+		let org_data;
+		return this.actionWorkstationOrganizationData({
+				workstation,
+				embed_schedules: true
 			})
-			.then(({
-				org_data,
-				srv
-			}) => {
+			.then((org) => {
+				org_data = org;
+				return this.patchwerk.get('Service', {
+					department: org_data.org_merged.id,
+					counter: _.last(_.split(service, '-'))
+				});
+			})
+			.then(srv => {
 				let dates = this.getDates({
 					dedicated_date,
 					tz: org_data.org_merged.org_timezone,
@@ -316,6 +321,7 @@ class Prebook {
 					org_merged: org_data.org_merged,
 					org_chain: org_data.org_chain,
 					srv,
+					service,
 					d_date: dates.d_date,
 					b_date: dates.b_date,
 					td: dates.td,
@@ -326,9 +332,10 @@ class Prebook {
 	}
 
 	actionTicketConfirm(fields) {
-		let fnames = ['service', 'dedicated_date', 'service_count', 'priority', 'workstation', 'user_id', 'user_type', '_action', 'request_id', 'time_description'];
+		let fnames = ['service', 'operator', 'dedicated_date', 'service_count', 'priority', 'workstation', 'user_id', 'user_type', '_action', 'request_id', 'time_description'];
 		let {
 			service,
+			operator,
 			dedicated_date,
 			service_count,
 			priority,
@@ -428,11 +435,12 @@ class Prebook {
 				let tick = {
 					dedicated_date: org.d_date,
 					booking_date: org.b_date,
+					operator,
 					time_description,
 					priority: computed_priority,
 					code: pin,
 					user_info,
-					service: org.srv.id,
+					service,
 					label,
 					history: [hst],
 					service_count: s_count,
@@ -530,12 +538,14 @@ class Prebook {
 		service,
 		dedicated_date,
 		workstation,
+		operator,
 		service_count = 1,
 		per_service = 10000
 	}) {
 		let org;
 		let s_count = _.parseInt(service_count) || 1;
 		let time = process.hrtime();
+
 		return this.preparePrebookProcessing({
 				workstation,
 				service,
@@ -560,8 +570,9 @@ class Prebook {
 				let count = _.round((pre.available.prebook || 0) / (pre.data.srv.prebook_operation_time * s_count));
 				org = pre.data;
 				// console.log("OBSERVING PREBOOK II", count, pre.available, org.org_merged.prebook_observe_max_slots || count);
-				return !success ? {} : this.getServiceSlots({
+				return !success ? [] : this.getServiceSlots({
 					preprocessed: org,
+					operator,
 					count,
 					s_count
 				});
@@ -594,6 +605,7 @@ class Prebook {
 	actionAvailableDays({
 		service,
 		workstation,
+		operator,
 		service_count = 1,
 		per_service = 1,
 		start,
@@ -624,7 +636,15 @@ class Prebook {
 					let pre = val.data;
 					// console.log("OBSERVING PREBOOK II", val.solid, val.success, s_count, pre.srv.prebook_operation_time, (val.solid.prebook >= pre.srv.prebook_operation_time * s_count), pre.d_date.format("YYYY-MM-DD"));
 					let local_key = pre.d_date.format();
-					acc[local_key] = val.success && val.max_solid.prebook && (val.max_solid.prebook >= pre.srv.prebook_operation_time * s_count);
+					let success = val.success && val.max_solid.prebook && (val.max_solid.prebook >= pre.srv.prebook_operation_time * s_count);
+					let count = _.round((val.available.prebook || 0) / (pre.srv.prebook_operation_time * s_count));
+					acc[local_key] = !operator && success ? success : this.getServiceSlots({
+							preprocessed: pre,
+							operator,
+							count,
+							s_count
+						})
+						.then(res => !!_.size(res));
 					return acc;
 				}, {});
 				return Promise.props(promises);
@@ -817,11 +837,12 @@ class Prebook {
 
 	getServiceSlots({
 		preprocessed,
+		operator,
 		count,
 		s_count
 	}) {
 		let time = process.hrtime();
-		return this.iris.ticket_api.getServiceSlotsCache(preprocessed.org_merged.id, preprocessed.srv.id, preprocessed.d_date.format("YYYY-MM-DD"))
+		return this.iris.ticket_api.getServiceSlotsCache(preprocessed.org_merged.id, preprocessed.service, preprocessed.d_date.format("YYYY-MM-DD"))
 			.then((res) => {
 
 				let diff = process.hrtime(time);
@@ -852,11 +873,14 @@ class Prebook {
 
 				this.emitter.command("prebook.save.service.slots", {
 					office: preprocessed.org_merged.id,
-					service: preprocessed.srv.id,
+					service: preprocessed.service,
 					date: preprocessed.d_date.format("YYYY-MM-DD"),
 					data: cache
 				});
 				let all_slots = cache;
+				if (operator) {
+					all_slots = _.filter(all_slots, s => s.operator == operator);
+				}
 
 				let solid_slots = [];
 				let curr = [];
@@ -955,7 +979,7 @@ class Prebook {
 				// 		depth: null
 				// 	}));
 
-				return this.iris.ticket_api.cacheServiceSlots(preprocessed.org_merged.id, preprocessed.srv.id, preprocessed.d_date.format("YYYY-MM-DD"), new_slots, {
+				return this.iris.ticket_api.cacheServiceSlots(preprocessed.org_merged.id, preprocessed.service, preprocessed.d_date.format("YYYY-MM-DD"), new_slots, {
 					expiry
 				});
 			});
@@ -970,7 +994,7 @@ class Prebook {
 		return this.iris.observe({
 				operator: '*',
 				services: [{
-					service: preprocessed.srv.id,
+					service: preprocessed.service,
 					time_description: preprocessed.srv.prebook_operation_time
 				}],
 				time_description: preprocessed.td,
@@ -996,7 +1020,6 @@ class Prebook {
 		return this.computeServiceQuota(preprocessed)
 			.then((res) => {
 				new_quota = res;
-				// console.log("NEW QUOTA", new_quota[preprocessed.org_merged.id][preprocessed.srv.id]);
 				return this.services.cacheServiceQuota(preprocessed.org_merged.id, new_quota, {
 					expiry
 				});
@@ -1071,7 +1094,7 @@ class Prebook {
 	actionGetStats(data, replace = false) {
 		let days = _.castArray(data);
 		let org = days[0].org_merged.id;
-		let srv = days[0].srv.id;
+		let srv = days[0].service;
 		let dates = _.map(days, d => d.d_date.format('YYYY-MM-DD'));
 		let time = process.hrtime();
 		return this.services.getServiceQuota(org, srv, dates)
