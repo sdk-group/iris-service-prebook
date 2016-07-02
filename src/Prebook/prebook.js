@@ -545,7 +545,6 @@ class Prebook {
 		let org;
 		let s_count = _.parseInt(service_count) || 1;
 		let time = process.hrtime();
-
 		return this.preparePrebookProcessing({
 				workstation,
 				service,
@@ -637,14 +636,15 @@ class Prebook {
 					// console.log("OBSERVING PREBOOK II", val.solid, val.success, s_count, pre.srv.prebook_operation_time, (val.solid.prebook >= pre.srv.prebook_operation_time * s_count), pre.d_date.format("YYYY-MM-DD"));
 					let local_key = pre.d_date.format();
 					let success = val.success && val.max_solid.prebook && (val.max_solid.prebook >= pre.srv.prebook_operation_time * s_count);
-					let count = _.round((val.available.prebook || 0) / (pre.srv.prebook_operation_time * s_count));
-					acc[local_key] = !operator && success ? success : this.getServiceSlots({
-							preprocessed: pre,
-							operator,
-							count,
-							s_count
-						})
-						.then(res => !!_.size(res));
+					// let count = _.round((val.available.prebook || 0) / (pre.srv.prebook_operation_time * s_count));
+					// acc[local_key] = !operator && success ? success : this.getServiceSlots({
+					// 		preprocessed: pre,
+					// 		operator,
+					// 		count,
+					// 		s_count
+					// 	})
+					// 	.then(res => !!_.size(res));
+					acc[local_key] = success;
 					return acc;
 				}, {});
 				return Promise.props(promises);
