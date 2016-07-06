@@ -90,17 +90,17 @@ class Prebook {
 				let tickets = _(ticks)
 					.flatten()
 					.filter(t => (t.expiry < ts_now))
-					.map('id')
 					.value();
-				// console.log("TICKS TO EXPIRE", tickets, ts_now, ticks);
-				let p = _.map(tickets, (ticket) => {
+				console.log("TICKS TO EXPIRE", tickets, ts_now, ticks);
+				return Promise.map(tickets, (ticket) => {
+					console.log("EXP", ticket.id, ticket.org_destination);
 					return this.emitter.addTask("queue", {
 						_action: "ticket-expire",
-						ticket,
+						ticket: ticket.id,
+						organization: ticket.org_destination,
 						auto: true
 					});
 				});
-				return Promise.all(p);
 			})
 			.catch((err) => {
 				global.logger && logger.error(
@@ -436,6 +436,7 @@ class Prebook {
 					dedicated_date: org.d_date,
 					booking_date: org.b_date,
 					operator,
+					alt_operator: operator ? [operator] : undefined,
 					time_description,
 					priority: computed_priority,
 					code: pin,
@@ -510,6 +511,7 @@ class Prebook {
 									params: {
 										_action: "ticket-expire",
 										ticket: tick.id,
+										organization: tick.org_destination,
 										auto: true
 									}
 								});
