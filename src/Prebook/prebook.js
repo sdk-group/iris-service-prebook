@@ -237,18 +237,33 @@ class Prebook {
 		start = 0,
 		end
 	}) {
-		return Promise.props({
-				org_data: this.actionWorkstationOrganizationData({
-					workstation,
-					embed_schedules: true
-				}),
-				srv: this.services.getService({
-						keys: service
+		let org;
+		return this.actionWorkstationOrganizationData({
+				workstation,
+				embed_schedules: true
+			})
+			.then((pre) => {
+				org = pre;
+				let mode = org.org_merged.workstation_resource_enabled ? 'destination' : 'operator';
+				org.agent_type = mode;
+				return Promise.props({
+					agent_keys: mode == 'destination' ? this.emitter.addTask('workstation', {
+						_action: 'resource-keys',
+						organization: org.org_merged.id,
+						device_type: 'control-panel'
+					}) : this.emitter.addTask('agent', {
+						_action: 'resource-keys',
+						role: 'Operator',
+						organization: org.org_merged.id
+					}),
+					srv: this.patchwerk.get('Service', {
+						department: org.org_merged.id,
+						counter: _.last(_.split(service, '-'))
 					})
-					.then(res => res[service])
+				});
 			})
 			.then(({
-				org_data,
+				agent_keys,
 				srv
 			}) => {
 				let d_start = moment()
@@ -268,16 +283,18 @@ class Prebook {
 					days: _.map(days, (dedicated_date) => {
 						let dates = this.getDates({
 							dedicated_date,
-							tz: org_data.org_merged.org_timezone,
-							offset: org_data.org_merged.prebook_observe_offset,
-							schedules: org_data.org_merged.has_schedule.prebook
+							tz: org.org_merged.org_timezone,
+							offset: org.org_merged.prebook_observe_offset,
+							schedules: org.org_merged.has_schedule.prebook
 						});
 
 						return {
-							ws: org_data.ws,
-							org_addr: org_data.org_addr,
-							org_merged: org_data.org_merged,
-							org_chain: org_data.org_chain,
+							ws: org.ws,
+							org_addr: org.org_addr,
+							org_merged: org.org_merged,
+							org_chain: org.org_chain,
+							agent_type: org.agent_type,
+							agent_keys: agent_keys,
 							srv,
 							service,
 							d_date: dates.d_date,
@@ -296,30 +313,48 @@ class Prebook {
 		dedicated_date,
 		offset = true
 	}) {
-		let org_data;
+		let org;
 		return this.actionWorkstationOrganizationData({
 				workstation,
 				embed_schedules: true
 			})
-			.then((org) => {
-				org_data = org;
-				return this.patchwerk.get('Service', {
-					department: org_data.org_merged.id,
-					counter: _.last(_.split(service, '-'))
+			.then((pre) => {
+				org = pre;
+				let mode = org.org_merged.workstation_resource_enabled ? 'destination' : 'operator';
+				org.agent_type = mode;
+				return Promise.props({
+					agent_keys: mode == 'destination' ? this.emitter.addTask('workstation', {
+						_action: 'resource-keys',
+						organization: org.org_merged.id,
+						device_type: 'control-panel'
+					}) : this.emitter.addTask('agent', {
+						_action: 'resource-keys',
+						role: 'Operator',
+						organization: org.org_merged.id
+					}),
+					srv: this.patchwerk.get('Service', {
+						department: org.org_merged.id,
+						counter: _.last(_.split(service, '-'))
+					})
 				});
 			})
-			.then(srv => {
+			.then(({
+				agent_keys,
+				srv
+			}) => {
 				let dates = this.getDates({
 					dedicated_date,
-					tz: org_data.org_merged.org_timezone,
-					offset: (offset ? org_data.org_merged.prebook_observe_offset : 0),
-					schedules: org_data.org_merged.has_schedule.prebook
+					tz: org.org_merged.org_timezone,
+					offset: (offset ? org.org_merged.prebook_observe_offset : 0),
+					schedules: org.org_merged.has_schedule.prebook
 				});
 				return {
-					ws: org_data.ws,
-					org_addr: org_data.org_addr,
-					org_merged: org_data.org_merged,
-					org_chain: org_data.org_chain,
+					ws: org.ws,
+					org_addr: org.org_addr,
+					org_merged: org.org_merged,
+					org_chain: org.org_chain,
+					agent_keys: agent_keys,
+					agent_type: org.agent_type,
 					srv,
 					service,
 					d_date: dates.d_date,
@@ -332,10 +367,11 @@ class Prebook {
 	}
 
 	actionTicketConfirm(fields) {
-		let fnames = ['service', 'operator', 'dedicated_date', 'service_count', 'priority', 'workstation', 'user_id', 'user_type', '_action', 'request_id', 'time_description'];
+		let fnames = ['service', 'operator', 'destination', 'dedicated_date', 'service_count', 'priority', 'workstation', 'user_id', 'user_type', '_action', 'request_id', 'time_description'];
 		let {
 			service,
 			operator,
+			destination,
 			dedicated_date,
 			service_count,
 			priority,
@@ -433,16 +469,21 @@ class Prebook {
 			}) => {
 				// console.log("EXPIRES IN ||", expiry);
 				let tick = {
+					booking_method: 'prebook',
 					dedicated_date: org.d_date,
 					booking_date: org.b_date,
-					operator,
-					alt_operator: operator ? [operator] : undefined,
 					time_description,
 					priority: computed_priority,
 					code: pin,
-					user_info,
-					service,
-					label,
+					user_info: user_info,
+					service: service,
+					label: label,
+					operator: operator,
+					destination: destination,
+					locked_fields: {
+						operator: operator,
+						destination: destination
+					},
 					history: [hst],
 					service_count: s_count,
 					state: 'booked',
@@ -451,11 +492,12 @@ class Prebook {
 					expiry
 				};
 				return this.iris.confirm({
-					operator: '*',
+					actor_type: org.agent_type,
+					actor: '*',
 					time_description: org.td,
 					dedicated_date: org.d_date,
 					service_keys: this.services.getSystemName('registry', 'service'),
-					operator_keys: this.services.getSystemName('global', 'membership_description'),
+					actor_keys: org.agent_keys.all,
 					organization: org.org_merged.id,
 					tick,
 					method: 'prebook'
@@ -541,6 +583,7 @@ class Prebook {
 		dedicated_date,
 		workstation,
 		operator,
+		destination,
 		service_count = 1,
 		per_service = 10000
 	}) {
@@ -607,6 +650,7 @@ class Prebook {
 		service,
 		workstation,
 		operator,
+		destination,
 		service_count = 1,
 		per_service = 1,
 		start,
@@ -694,18 +738,13 @@ class Prebook {
 		let org;
 		let srv;
 
-		return Promise.props({
-				org: organization_data ||
-					this.actionWorkstationOrganizationData({
-						workstation,
-						embed_schedules: true
-					}),
-				srv: this.services.getServiceIds()
+		return organization_data ||
+			this.actionWorkstationOrganizationData({
+				workstation,
+				embed_schedules: true
 			})
-			.then((org_data) => {
-				org = org_data.org;
-				srv = org_data.srv;
-				// console.log("RES Q C", org_data);
+			.then((pre) => {
+				org = pre;
 				return this.services.serviceQuotaExpired(org.org_merged.id, this.warmup_throttle_hours * 3600000);
 			})
 			.then((res) => {
@@ -719,6 +758,20 @@ class Prebook {
 				if (!res)
 					return Promise.reject(new Error("Quota is locked."));
 				logger.error('WARMUP START');
+
+				let mode = org.org_merged.workstation_resource_enabled ? 'destination' : 'operator';
+				org.agent_type = mode;
+				return mode == 'destination' ? this.emitter.addTask('workstation', {
+					_action: 'resource-keys',
+					organization: org.org_merged.id,
+					device_type: 'control-panel'
+				}) : this.emitter.addTask('agent', {
+					_action: 'resource-keys',
+					role: 'Operator',
+					organization: org.org_merged.id
+				});
+			})
+			.then((agent_keys) => {
 
 				let d_start = moment()
 					.add(start, 'days');
@@ -743,6 +796,8 @@ class Prebook {
 						org_addr: org.org_addr,
 						org_merged: org.org_merged,
 						org_chain: org.org_chain,
+						agent_type: org.agent_type,
+						agent_keys: agent_keys,
 						d_date: dates.d_date,
 						b_date: dates.b_date,
 						td: dates.td,
@@ -974,7 +1029,7 @@ class Prebook {
 					.add(1, 'day')
 					.diff(moment(), 'seconds');
 				new_slots = _.map(res, t => {
-					return _.pick(t, ['time_description', 'operator', 'destination', 'source']);
+					return _.pick(t, ['time_description', 'operator', 'destination', 'source', 'locked_fields']);
 				});
 				// console.log("NEW SLOTS", require('util')
 				// 	.inspect(new_slots, {
@@ -994,7 +1049,7 @@ class Prebook {
 	}) {
 		// console.log("PRE CMP SS", preprocessed);
 		return this.iris.observe({
-				operator: '*',
+				actor: '*',
 				services: [{
 					service: preprocessed.service,
 					time_description: preprocessed.srv.prebook_operation_time
@@ -1002,7 +1057,8 @@ class Prebook {
 				time_description: preprocessed.td,
 				dedicated_date: preprocessed.d_date,
 				service_keys: this.services.getSystemName('registry', 'service'),
-				operator_keys: this.services.getSystemName('global', 'membership_description'),
+				actor_keys: preprocessed.agent_keys.all,
+				actor_type: preprocessed.agent_type,
 				organization: preprocessed.org_merged.id,
 				count,
 				service_count: s_count,
@@ -1033,11 +1089,12 @@ class Prebook {
 		let quota;
 		let time = process.hrtime();
 		return this.iris.confirm({
-				operator: '*',
+				actor: '*',
 				time_description: preprocessed.td,
 				dedicated_date: preprocessed.d_date,
 				service_keys: this.services.getSystemName('registry', 'service'),
-				operator_keys: this.services.getSystemName('global', 'membership_description'),
+				actor_keys: preprocessed.agent_keys.all,
+				actor_type: preprocessed.agent_type,
 				organization: preprocessed.org_merged.id,
 				method: 'live',
 				quota_status: true
@@ -1049,11 +1106,12 @@ class Prebook {
 
 				quota = res.stats;
 				return this.iris.confirm({
-					operator: '*',
+					actor: '*',
 					time_description: preprocessed.td,
 					dedicated_date: preprocessed.d_date,
 					service_keys: this.services.getSystemName('registry', 'service'),
-					operator_keys: this.services.getSystemName('global', 'membership_description'),
+					actor_keys: preprocessed.agent_keys.all,
+					actor_type: preprocessed.agent_type,
 					organization: preprocessed.org_merged.id,
 					method: 'prebook',
 					quota_status: true
