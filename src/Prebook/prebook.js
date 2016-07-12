@@ -738,11 +738,11 @@ class Prebook {
 		let org;
 		let srv;
 
-		return organization_data ||
+		return (organization_data ? Promise.resolve(organization_data) :
 			this.actionWorkstationOrganizationData({
 				workstation,
 				embed_schedules: true
-			})
+			}))
 			.then((pre) => {
 				org = pre;
 				return this.services.serviceQuotaExpired(org.org_merged.id, this.warmup_throttle_hours * 3600000);
