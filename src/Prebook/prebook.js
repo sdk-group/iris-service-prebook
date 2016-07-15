@@ -8,11 +8,16 @@ let Patchwerk = require('patchwerk');
 let moment = require('moment-timezone');
 require('moment-range');
 
+let Gatherer = require('./stats.js');
+Gatherer.setTransforms(['live-slots-count', 'prebook-slots-count']);
+Gatherer.setTtl(60);
+
 class Prebook {
 	constructor() {
 		this.emitter = message_bus;
 	}
 	init(config) {
+
 		this.iris = new BookingApi();
 		this.iris.initContent();
 		this.services = new ServiceApi();
@@ -23,6 +28,7 @@ class Prebook {
 		this.warmup_throttle_hours = config.warmup_throttle_hours || 24;
 		this.service_quota_flag_expiry = config.service_quota_flag_expiry || 1800;
 	}
+
 	launch() {
 			this.emitter.command('taskrunner.add.task', {
 				time: this.prebook_check_interval,
@@ -39,17 +45,168 @@ class Prebook {
 			this.emitter.listenTask('prebook.save.service.quota', (data) => this.actionUpdateServiceQuota(data));
 			this.emitter.listenTask('prebook.save.service.slots', (data) => this.actionUpdateServiceSlots(data));
 
-			return this.emitter.addTask('workstation', {
-					_action: 'organization-timezones'
-				})
+			this.emitter.on('ticket.emit.state', (data) => {
+				if (data.event_name == 'register' || data.event_name == 'book' || !Gatherer.alive) {
+					return this.fillGatherer(data.ticket.org_destination);
+				}
+			});
+
+			return this.actionScheduleWarmupAll()
 				.then((res) => {
-					return this.actionScheduleWarmupAll({
-						organization: _.keys(res)
-					});
+					return this.fillGatherer();
 				})
 				.then(res => true);
 		}
 		//API
+
+	fillGatherer(orgs) {
+		let org_seq;
+		return this.emitter.addTask('workstation', {
+				_action: 'organization-data',
+				organization: orgs,
+				embed_schedules: true
+			})
+			.then(orgs => {
+				org_seq = _.values(orgs);
+				return Promise.mapSeries(org_seq, (org) => this.statsByOrganization(org));
+			})
+			.then((res) => {
+				let data = _.reduce(res, (acc, org_data, index) => {
+					acc[org_seq[index].org_merged.id] = org_data;
+					return acc;
+				}, {});
+				Gatherer.update(data);
+			});
+	}
+
+	statsByOrganization(organization_data) {
+		let org = organization_data;
+		let stats;
+		let mode = org.org_merged.workstation_resource_enabled ? 'destination' : 'operator';
+		org.agent_type = mode;
+		return Promise.props({
+				agent_keys: (mode == 'destination' ? this.emitter.addTask('workstation', {
+					_action: 'resource-keys',
+					organization: org.org_merged.id,
+					device_type: 'control-panel'
+				}) : this.emitter.addTask('agent', {
+					_action: 'resource-keys',
+					role: 'Operator',
+					organization: org.org_merged.id
+				})),
+				srv: this.services.getServiceIds()
+			})
+			.then(({
+				agent_keys,
+				srv
+			}) => {
+				let tz = org.org_merged.org_timezone;
+				let dedicated = moment.tz(tz);
+				let now = moment.tz(tz)
+					.diff(moment.tz(tz)
+						.startOf('day'), 'seconds');
+
+				let lsch = _.find(_.castArray(org.org_merged.has_schedule.live || []), (piece) => {
+					return !!~_.indexOf(piece.has_day, dedicated.format('dddd'));
+				});
+				let psch = _.find(_.castArray(org.org_merged.has_schedule.prebook || []), (piece) => {
+					return !!~_.indexOf(piece.has_day, dedicated.format('dddd'));
+				});
+				let lchunks = lsch ? _.flatMap(lsch.has_time_description, 'data.0') : [86400];
+				let pchunks = lsch ? _.flatMap(psch.has_time_description, 'data.0') : [86400];
+				let ltd = [now, _.max(lchunks)];
+				let ptd = [now + org.org_merged.prebook_observe_offset, _.max(pchunks)];
+
+				return {
+					org_addr: org.org_addr,
+					org_merged: org.org_merged,
+					org_chain: org.org_chain,
+					agent_type: org.agent_type,
+					agent_keys: agent_keys,
+					d_date: dedicated,
+					ltd: ltd,
+					ptd: ptd,
+					service_keys: srv
+				};
+			})
+			.then(preprocessed => {
+				org = preprocessed;
+				return this.iris.confirm({
+					actor: org.agent_keys.active,
+					time_description: org.ltd,
+					dedicated_date: org.d_date,
+					service_keys: this.services.getSystemName('registry', 'service'),
+					actor_keys: org.agent_keys.all,
+					actor_type: org.agent_type,
+					organization: org.org_merged.id,
+					method: 'live',
+					quota_status: true
+				});
+			})
+			.then((res) => {
+				stats = res.stats || {};
+				return this.iris.confirm({
+					actor: '*',
+					time_description: org.ptd,
+					dedicated_date: org.d_date,
+					service_keys: this.services.getSystemName('registry', 'service'),
+					actor_keys: org.agent_keys.all,
+					actor_type: org.agent_type,
+					organization: org.org_merged.id,
+					method: 'prebook',
+					quota_status: true
+				});
+			})
+			.then((res) => {
+				stats = _.merge(stats, res.stats);
+				return Promise.mapSeries(org.service_keys, (service) => {
+					return this.patchwerk.get('Service', {
+						department: org.org_merged.id,
+						counter: _.last(_.split(service, '-'))
+					});
+				});
+			})
+			.then((res) => {
+				return _.reduce(res, (acc, srv, index) => {
+					//@FIXIT: proper way to determine service key
+					let srv_data = _.values(stats[org.service_keys[index]])[0] || {
+						available: {
+							live: 0,
+							prebook: 0
+						},
+						max_available: {
+							live: 0,
+							prebook: 0
+						},
+						max_solid: {
+							live: 0,
+							prebook: 0
+						}
+					};
+					// console.log(org.org_merged.id, org.service_keys[index], _.head(stats[org.service_keys[index]]), srv_data, srv);
+					acc[org.service_keys[index]] = {
+						live_slot_size: srv.live_operation_time,
+						prebook_slot_size: srv.prebook_operation_time,
+						live_available_time: srv_data.available.live,
+						prebook_available_time: srv_data.available.prebook,
+						live_total_time: srv_data.max_available.live,
+						prebook_total_time: srv_data.max_available.prebook,
+						live_solid_time: srv_data.max_solid.live,
+						prebook_solid_time: srv_data.max_solid.prebook
+					};
+					return acc;
+				}, {});
+			});
+	}
+
+	actionServiceStats({
+		organization
+	}) {
+		// console.log("SERVSLOTs", Gatherer.stats(organization));
+		return Gatherer.stats(organization);
+	}
+
+
 	actionExpirationCheck({
 		ts_now
 	}) {
@@ -113,12 +270,9 @@ class Prebook {
 			});
 	}
 
-	actionScheduleWarmupAll({
-		organization
-	}) {
+	actionScheduleWarmupAll() {
 		return this.emitter.addTask('workstation', {
 				_action: 'organization-data',
-				organization,
 				embed_schedules: true
 			})
 			.then((res) => {
@@ -152,9 +306,7 @@ class Prebook {
 	actionAutoWarmupAll({
 		organization
 	}) {
-		this.actionScheduleWarmupAll({
-			organization: _.keys(organization)
-		});
+		this.actionScheduleWarmupAll();
 		return this.actionWarmupAll({
 			organization
 		});
@@ -1085,11 +1237,6 @@ class Prebook {
 	}
 
 
-	actionAvailableSlots({}) {
-
-	}
-
-
 	computeServiceQuota(preprocessed) {
 		let quota;
 		let time = process.hrtime();
@@ -1131,30 +1278,6 @@ class Prebook {
 			});
 	}
 
-	actionServiceStats({
-		workstation,
-		service,
-		date
-	}) {
-		let org;
-		let dates = date ? moment(date)
-			.format('YYYY-MM-DD') : moment()
-			.format('YYYY-MM-DD');
-		return Promise.props({
-				pre: this.actionWorkstationOrganizationData({
-					workstation,
-					embed_schedules: true
-				}),
-				srv: service ? Promise.resolve(_.castArray(service)) : this.services.getServiceIds()
-			})
-			.then(({
-				pre,
-				srv
-			}) => {
-				org = pre;
-				return this.services.getServiceQuota(org.org_merged.id, srv, dates);
-			});
-	}
 
 	actionGetStats(data, replace = false) {
 		let days = _.castArray(data);
