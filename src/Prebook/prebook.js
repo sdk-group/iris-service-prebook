@@ -113,7 +113,7 @@ class Prebook {
 					return !!~_.indexOf(piece.has_day, dedicated.format('dddd'));
 				});
 				let lchunks = lsch ? _.flatMap(lsch.has_time_description, 'data.0') : [86400];
-				let pchunks = lsch ? _.flatMap(psch.has_time_description, 'data.0') : [86400];
+				let pchunks = psch ? _.flatMap(psch.has_time_description, 'data.0') : [86400];
 				let ltd = [now, _.max(lchunks)];
 				let ptd = [now + org.org_merged.prebook_observe_offset, _.max(pchunks)];
 
