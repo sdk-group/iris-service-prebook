@@ -1086,10 +1086,14 @@ class Prebook {
 					date: preprocessed.d_date.format("YYYY-MM-DD"),
 					data: cache
 				});
-				let all_slots = cache;
+				let all_slots = _.sortBy(cache, 'time_description.0');
 				if (operator) {
 					all_slots = _.filter(all_slots, s => s.operator == operator);
 				}
+				// console.log("SLOTS CACHE", require('util')
+				// 	.inspect(all_slots, {
+				// 		depth: null
+				// 	}));
 
 				let solid_slots = [];
 				let curr = [];
