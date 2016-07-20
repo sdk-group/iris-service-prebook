@@ -4,6 +4,7 @@ let discover = require('./stat-method/index.js');
 class Gatherer {
 	constructor() {
 		this._initialized = false;
+		this._locked = false;
 		this._dataset = {};
 		this._consumers = {};
 	}
@@ -25,6 +26,18 @@ class Gatherer {
 		this._dataset = _.cloneDeep(data);
 		//set flag
 		this._initialized = true;
+	}
+
+	lock() {
+		this._locked = true;
+	}
+
+	unlock() {
+		this._locked = false;
+	}
+
+	get locked() {
+		return this._locked;
 	}
 
 	get alive() {

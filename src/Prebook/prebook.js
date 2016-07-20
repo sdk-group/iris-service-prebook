@@ -61,6 +61,9 @@ class Prebook {
 
 	fillGatherer(orgs) {
 		let org_seq;
+		if (Gatherer.locked)
+			return false;
+		Gatherer.lock();
 		return this.emitter.addTask('workstation', {
 				_action: 'organization-data',
 				organization: orgs,
@@ -76,6 +79,7 @@ class Prebook {
 					return acc;
 				}, {});
 				Gatherer.update(data);
+				Gatherer.unlock();
 			});
 	}
 
