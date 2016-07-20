@@ -1,7 +1,7 @@
 'use strict'
 let discover = require('./stat-method/index.js');
 
-class SlotStats {
+class Gatherer {
 	constructor() {
 		this._initialized = false;
 		this._dataset = {};
@@ -60,5 +60,5 @@ class SlotStats {
 
 }
 
-let instance = new SlotStats();
+let instance = new Gatherer();
 module.exports = instance;
