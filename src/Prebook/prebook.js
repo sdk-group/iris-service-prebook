@@ -47,13 +47,13 @@ class Prebook {
 
 			this.emitter.on('ticket.emit.state', (data) => {
 				if (data.event_name == 'register' || data.event_name == 'book' || !Gatherer.alive) {
-					return this.fillGatherer(data.ticket.org_destination);
+					//		return this.fillGatherer(data.ticket.org_destination);
 				}
 			});
 
 			return this.actionScheduleWarmupAll()
 				.then((res) => {
-					return this.fillGatherer();
+					//	return this.fillGatherer();
 				})
 				.then(res => true);
 		}
@@ -207,7 +207,7 @@ class Prebook {
 		organization
 	}) {
 		// console.log("SERVSLOTs", Gatherer.stats(organization));
-		return Gatherer.stats(organization);
+		return {}; //Gatherer.stats(organization);
 	}
 
 
