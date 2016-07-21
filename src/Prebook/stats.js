@@ -7,6 +7,7 @@ class Gatherer {
 		this._locked = false;
 		this._dataset = {};
 		this._consumers = {};
+		this._computed = {};
 	}
 
 	setTransforms(names) {
@@ -51,10 +52,15 @@ class Gatherer {
 	stats(path) {
 		if (!this.ready)
 			throw new Error("Ain't ready to give you stats");
+		let cmp = _.get(this._computed, path, false);
+		if (cmp)
+			return cmp;
 		let dataset = path ? _.get(this._dataset, path, false) : this._dataset;
-		return _.mapValues(dataset, (datapart) => {
+		let res = _.mapValues(dataset, (datapart) => {
 			return _.mapValues(this._consumers, (fn) => fn(datapart));
 		});
+		_.set(this._computed, path, res);
+		return res;
 	}
 
 	update(data, path = false) {
@@ -69,6 +75,7 @@ class Gatherer {
 	flush() {
 		this._initialized = false;
 		_.unset(this, '_dataset');
+		_.unset(this, '_computed');
 	}
 
 }
