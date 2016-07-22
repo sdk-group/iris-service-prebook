@@ -24,8 +24,9 @@ class Prebook {
 		this.patchwerk = Patchwerk(message_bus);
 
 		Gatherer.setTransforms(['live-slots-count', 'prebook-slots-count']);
-		Gatherer.setTtl(10);
+		Gatherer.setTtl(30);
 
+		Collector.init(this.emitter);
 		Collector.setBuilder(this.iris.getCachingFactory.bind(this.iris));
 
 		this.prebook_check_interval = config.prebook_check_interval || 30;

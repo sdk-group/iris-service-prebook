@@ -1,25 +1,34 @@
 'use strict'
 
-let DataSource = require('./datasource.js');
+let DataSource = require('./data-source.js');
 
-class Processor {
+class Collector {
+	init(emitter) {
+		this.emitter = emitter;
+		this.emitter.on('inmemory-stats.flush', (query) => {
+			this.flush();
+		});
+	}
+
 	setBuilder(factory_builder) {
 		this.builder = factory_builder;
-		this.factory = factory_builder(DataSource);
+		let built = factory_builder(DataSource);
+		this.factory = built.factory;
+		this.datasource = built.datasource;
 	}
 
 	process(data) {
-		console.log("PROCESS--------------------------------------->");
+		// console.log("PROCESS--------------------------------------->");
 		data.reserve = false;
 		return this.factory.getAtom(['<namespace>builder', 'box'])
 			.save(data);
 	}
 
 	flush() {
-
+		this.datasource && this.datasource.flush();
 	}
 
 }
 
-let instance = new Processor();
+let instance = new Collector();
 module.exports = instance;
