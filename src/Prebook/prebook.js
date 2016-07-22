@@ -9,8 +9,7 @@ let moment = require('moment-timezone');
 require('moment-range');
 
 let Gatherer = require('./stats.js');
-Gatherer.setTransforms(['live-slots-count', 'prebook-slots-count']);
-Gatherer.setTtl(60);
+let Collector = require('./stat-datasource/data-processor.js');
 
 class Prebook {
 	constructor() {
@@ -23,6 +22,11 @@ class Prebook {
 		this.services = new ServiceApi();
 		this.services.initContent();
 		this.patchwerk = Patchwerk(message_bus);
+
+		Gatherer.setTransforms(['live-slots-count', 'prebook-slots-count']);
+		Gatherer.setTtl(10);
+
+		Collector.setBuilder(this.iris.getCachingFactory.bind(this.iris));
 
 		this.prebook_check_interval = config.prebook_check_interval || 30;
 		this.warmup_throttle_hours = config.warmup_throttle_hours || 24;
@@ -42,24 +46,39 @@ class Prebook {
 				}
 			});
 
+			this.emitter.command('taskrunner.add.task', {
+				time: 15,
+				task_name: "",
+				module_name: "prebook",
+				task_type: "add-task",
+				solo: true,
+				// regular: true,
+				params: {
+					_action: "fill-gatherer"
+				}
+			});
+
+
 			this.emitter.listenTask('prebook.save.service.quota', (data) => this.actionUpdateServiceQuota(data));
 			this.emitter.listenTask('prebook.save.service.slots', (data) => this.actionUpdateServiceSlots(data));
 
 			this.emitter.on('ticket.emit.state', (data) => {
 				if (data.event_name == 'register' || data.event_name == 'book' || !Gatherer.alive) {
-					//		return this.fillGatherer(data.ticket.org_destination);
+					return this.actionFillGatherer({
+						organization: data.ticket.org_destination
+					});
 				}
 			});
 
 			return this.actionScheduleWarmupAll()
-				.then((res) => {
-					//	return this.fillGatherer();
-				})
 				.then(res => true);
 		}
 		//API
 
-	fillGatherer(orgs) {
+	actionFillGatherer({
+		organization: orgs
+	}) {
+		console.log("FILL", Gatherer.locked, orgs);
 		let org_seq;
 		if (Gatherer.locked)
 			return false;
@@ -78,6 +97,7 @@ class Prebook {
 					acc[org_seq[index].org_merged.id] = org_data;
 					return acc;
 				}, {});
+				// console.log(data);
 				Gatherer.update(data);
 				Gatherer.unlock();
 			});
@@ -135,7 +155,7 @@ class Prebook {
 			})
 			.then(preprocessed => {
 				org = preprocessed;
-				return this.iris.confirm({
+				return Collector.process({
 					actor: org.agent_keys.active,
 					time_description: org.ltd,
 					dedicated_date: org.d_date,
@@ -149,7 +169,7 @@ class Prebook {
 			})
 			.then((res) => {
 				stats = res.stats || {};
-				return this.iris.confirm({
+				return Collector.process({
 					actor: '*',
 					time_description: org.ptd,
 					dedicated_date: org.d_date,
@@ -171,6 +191,7 @@ class Prebook {
 				});
 			})
 			.then((res) => {
+				// console.log(res);
 				return _.reduce(res, (acc, srv, index) => {
 					//@FIXIT: proper way to determine service key
 					let srv_data = _.values(stats[org.service_keys[index]])[0] || {
@@ -207,7 +228,7 @@ class Prebook {
 		organization
 	}) {
 		// console.log("SERVSLOTs", Gatherer.stats(organization));
-		return {}; //Gatherer.stats(organization);
+		return Gatherer.stats(organization);
 	}
 
 

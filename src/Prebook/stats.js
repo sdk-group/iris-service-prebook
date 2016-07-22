@@ -65,6 +65,7 @@ class Gatherer {
 
 	update(data, path = false) {
 		this.timestamp = _.now();
+		_.unset(this, '_computed');
 		if (!path) {
 			this._fill(data);
 		} else {
