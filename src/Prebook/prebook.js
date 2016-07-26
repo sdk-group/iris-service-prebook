@@ -24,7 +24,8 @@ class Prebook {
 		this.patchwerk = Patchwerk(message_bus);
 
 		Gatherer.setTransforms(['live-slots-count', 'prebook-slots-count']);
-		Gatherer.setTtl(30);
+		Gatherer.setTtl(config.available_slots_ttl || 300);
+		Gatherer.setThrottle(config.available_slots_throttle || 30);
 
 		Collector.init(this.emitter);
 		Collector.setBuilder(this.iris.getCachingFactory.bind(this.iris));
@@ -64,10 +65,8 @@ class Prebook {
 			this.emitter.listenTask('prebook.save.service.slots', (data) => this.actionUpdateServiceSlots(data));
 
 			this.emitter.on('ticket.emit.state', (data) => {
-				if (data.event_name == 'register' || data.event_name == 'book' || !Gatherer.alive) {
-					return this.actionFillGatherer({
-						organization: data.ticket.org_destination
-					});
+				if (data.event_name == 'register' || data.event_name == 'book' || data.event_name == 'closed') {
+					Gatherer.invalidate(data.ticket.org_destination);
 				}
 			});
 
@@ -79,28 +78,41 @@ class Prebook {
 	actionFillGatherer({
 		organization: orgs
 	}) {
-		console.log("FILL", Gatherer.locked, orgs);
+		console.log("FILL", Gatherer.locked, orgs, Gatherer.timestamp);
 		let org_seq;
 		if (Gatherer.locked)
-			return false;
+			return Promise.resolve(false);
 		Gatherer.lock();
+		let time = process.hrtime();
 		return this.emitter.addTask('workstation', {
 				_action: 'organization-data',
 				organization: orgs,
 				embed_schedules: true
 			})
 			.then(orgs => {
+				let diff = process.hrtime(time);
+				console.log('PRE FILL GATH IN %d seconds', diff[0] + diff[1] / 1e9);
+
 				org_seq = _.values(orgs);
 				return Promise.mapSeries(org_seq, (org) => this.statsByOrganization(org));
 			})
 			.then((res) => {
+				let diff = process.hrtime(time);
+				console.log('FILL GATH IN %d seconds', diff[0] + diff[1] / 1e9);
 				let data = _.reduce(res, (acc, org_data, index) => {
 					acc[org_seq[index].org_merged.id] = org_data;
 					return acc;
 				}, {});
 				// console.log(data);
-				Gatherer.update(data);
+				if (orgs) {
+					_.map(data, (org_data, org) => {
+						Gatherer.update(org_data, org);
+					});
+				} else {
+					Gatherer.update(data);
+				}
 				Gatherer.unlock();
+				return Promise.resolve(true);
 			});
 	}
 
@@ -207,6 +219,10 @@ class Prebook {
 						max_solid: {
 							live: 0,
 							prebook: 0
+						},
+						mapping: {
+							live: [],
+							prebook: []
 						}
 					};
 					// console.log(org.org_merged.id, org.service_keys[index], _.head(stats[org.service_keys[index]]), srv_data, srv);
@@ -218,7 +234,9 @@ class Prebook {
 						live_total_time: srv_data.max_available.live,
 						prebook_total_time: srv_data.max_available.prebook,
 						live_solid_time: srv_data.max_solid.live,
-						prebook_solid_time: srv_data.max_solid.prebook
+						prebook_solid_time: srv_data.max_solid.prebook,
+						live_chunk_mapping: srv_data.mapping.live,
+						prebook_chunk_mapping: srv_data.mapping.prebook
 					};
 					return acc;
 				}, {});
@@ -229,7 +247,15 @@ class Prebook {
 		organization
 	}) {
 		// console.log("SERVSLOTs", Gatherer.stats(organization));
-		return Gatherer.stats(organization);
+		console.log("sslots", organization);
+		if (!Gatherer.recent(organization))
+			return this.actionFillGatherer({
+					organization: organization
+				})
+				.then(res => Gatherer.stats(organization))
+				.catch(err => {});
+		return Gatherer.stats(organization)
+			.catch(err => {});
 	}
 
 
