@@ -24,8 +24,6 @@ class Prebook {
 		this.patchwerk = Patchwerk(message_bus);
 
 		Gatherer.setTransforms(['live-slots-count', 'prebook-slots-count']);
-		Gatherer.setTtl(config.available_slots_ttl || 45);
-		Gatherer.setThrottle(config.available_slots_throttle || 0);
 
 		Collector.init(this.emitter);
 		Collector.setBuilder(this.iris.getCachingFactory.bind(this.iris));
@@ -70,13 +68,14 @@ class Prebook {
 		organization: organization = []
 	}) {
 		let org_seq;
+		let now = _.now();
 		let org_keys = _.filter(organization, org => !Gatherer.locked(org));
 		let is_all = _.isEmpty(organization);
-		console.log("FILL", is_all, organization, org_keys, Gatherer.timestamp);
+		console.log("FILL", is_all, organization, org_keys, Gatherer.timestamp, Gatherer._expiry, Gatherer._locked);
 		if (_.isEmpty(org_keys) && !is_all)
 			return Promise.resolve(false);
 		if (is_all) {
-			Gatherer.lockEntire();
+			Gatherer.lock();
 		} else {
 			Gatherer.lockSections(org_keys);
 		}
@@ -96,28 +95,24 @@ class Prebook {
 			.then((res) => {
 				let diff = process.hrtime(time);
 				console.log('FILL GATH IN %d seconds', diff[0] + diff[1] / 1e9);
-				let data = _.reduce(res, (acc, org_data, index) => {
-					acc[org_seq[index].org_merged.id] = org_data;
-					return acc;
-				}, {});
-				// console.log(data);
-				if (!is_all) {
-					_.map(data, (org_data, org) => {
-						Gatherer.update(org_data, org);
-					});
-					Gatherer.unlockSections(org_keys);
+				_.map(res, (org_data, index) => {
+					let section = org_seq[index].org_merged.id;
+					Gatherer.update(section, org_data.data);
+					Gatherer.setExpiry(section, now + org_data.expiry * 1000);
+				});
+				if (is_all) {
+					Gatherer.unlock();
 				} else {
-					Gatherer.unlockEntire();
-					Gatherer.update(data);
+					Gatherer.unlockSections(org_keys);
 				}
 				return Promise.resolve(true);
 			})
 			.catch(err => {
 				console.log("GATH ERR", err.stack);
-				if (!is_all) {
-					Gatherer.unlockSections(org_keys);
+				if (is_all) {
+					Gatherer.unlock();
 				} else {
-					Gatherer.unlockEntire();
+					Gatherer.unlockSections(org_keys);
 				}
 				return Promise.reject(err);
 			});
@@ -212,33 +207,36 @@ class Prebook {
 			})
 			.then((res) => {
 				// console.log(res);
-				return _.reduce(res, (acc, srv, index) => {
+				let expiry = [];
+				let date = moment.tz(org.org_merged.org_timezone)
+					.format("YYYY-MM-DD");
+				let dummy = {
+					available: {
+						live: 0,
+						prebook: 0
+					},
+					max_available: {
+						live: 0,
+						prebook: 0
+					},
+					max_solid: {
+						live: 0,
+						prebook: 0
+					},
+					reserved: 0,
+					mapping: {
+						live: [],
+						prebook: []
+					}
+				};
+
+				let result = _.reduce(res, (acc, srv, index) => {
 					//@FIXIT: proper way to determine service key
 					// let success = !!(stats.max_available.live * part) && ((stats.max_available.live * part) >= (stats.reserved));
 					let part = _.clamp(srv.prebook_today_percentage || 0, 0, 100) / 100;;
-					let date = moment.tz(org.org_merged.org_timezone)
-						.format("YYYY-MM-DD");
 					// console.log("FILL SRV", _.get(stats, [org.service_keys[index], date], {}));
 					let srv_data = _.get(stats, [org.service_keys[index], date], {});
-					_.defaultsDeep(srv_data, {
-						available: {
-							live: 0,
-							prebook: 0
-						},
-						max_available: {
-							live: 0,
-							prebook: 0
-						},
-						max_solid: {
-							live: 0,
-							prebook: 0
-						},
-						reserved: 0,
-						mapping: {
-							live: [],
-							prebook: []
-						}
-					});
+					_.defaultsDeep(srv_data, dummy);
 					// console.log(org.org_merged.id, org.service_keys[index], _.head(stats[org.service_keys[index]]), srv_data, srv);
 					acc[org.service_keys[index]] = {
 						live_slot_size: srv.live_operation_time,
@@ -254,11 +252,16 @@ class Prebook {
 						prebook_percentage: part,
 						reserved: srv_data.reserved
 					};
+					expiry.push(srv.live_operation_time, srv.prebook_operation_time);
 					if (org.service_keys[index] == 'service-183') {
 						console.log('------------------------------------\n', org.org_merged.id, acc[org.service_keys[index]], '\n------------------------------------');
 					}
 					return acc;
 				}, {});
+				return {
+					data: result,
+					expiry: _.min(expiry)
+				};
 			});
 	}
 
@@ -266,21 +269,15 @@ class Prebook {
 		organization
 	}) {
 		// console.log("SERVSLOTs", Gatherer.stats(organization));
-		console.log("sslots", organization);
-		if (!Gatherer.recent(organization))
+		console.log("sslots", organization, Gatherer.expired(organization));
+		if (Gatherer.expired(organization))
 			return this.actionFillGatherer({
 					organization: organization
 				})
 				.then(res => Gatherer.stats(organization))
-				.catch(err => {
-					return {};
-				});
 		console.log("cached sslots", organization);
 
 		return Gatherer.stats(organization)
-			.catch(err => {
-				return {};
-			});
 	}
 
 
