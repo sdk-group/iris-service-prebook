@@ -159,7 +159,7 @@ class Prebook {
 				let lchunks = lsch ? _.flatMap(lsch.has_time_description, 'data.0') : [86400];
 				let pchunks = psch ? _.flatMap(psch.has_time_description, 'data.0') : [86400];
 				let ltd = [now, _.max(lchunks)];
-				let ptd = [now, _.max(pchunks)];
+				let ptd = [now + org.org_merged.prebook_observe_offset, _.max(pchunks)];
 
 				return {
 					org_addr: org.org_addr,
@@ -1319,8 +1319,25 @@ class Prebook {
 
 
 	computeServiceQuota(preprocessed) {
-		let quota;
+		let quota = {};
 		let time = process.hrtime();
+		// return  this.iris.confirm({
+		// 		actor: '*',
+		// 		time_description: preprocessed.td,
+		// 		dedicated_date: preprocessed.d_date,
+		// 		service_keys: this.services.getSystemName('registry', 'service'),
+		// 		actor_keys: preprocessed.agent_keys.all,
+		// 		actor_type: preprocessed.agent_type,
+		// 		organization: preprocessed.org_merged.id,
+		// 		method: 'live',
+		// 		quota_status: true
+		// 	})
+		// .then((res) => {
+		// let diff = process.hrtime(time);
+		// console.log('PRE COMPUTE QUOTA LIVE IN %d seconds', diff[0] + diff[1] / 1e9);
+		// time = process.hrtime();
+
+		// quota = res.stats;
 		return this.iris.confirm({
 				actor: '*',
 				time_description: preprocessed.td,
@@ -1329,32 +1346,13 @@ class Prebook {
 				actor_keys: preprocessed.agent_keys.all,
 				actor_type: preprocessed.agent_type,
 				organization: preprocessed.org_merged.id,
-				method: 'live',
+				method: 'prebook',
 				quota_status: true
-			})
-			.then((res) => {
-				let diff = process.hrtime(time);
-				console.log('PRE COMPUTE QUOTA LIVE IN %d seconds', diff[0] + diff[1] / 1e9);
-				time = process.hrtime();
-
-				quota = res.stats;
-				return this.iris.confirm({
-					actor: '*',
-					time_description: preprocessed.td,
-					dedicated_date: preprocessed.d_date,
-					service_keys: this.services.getSystemName('registry', 'service'),
-					actor_keys: preprocessed.agent_keys.all,
-					actor_type: preprocessed.agent_type,
-					organization: preprocessed.org_merged.id,
-					method: 'prebook',
-					quota_status: true
-				});
+					// });
 			})
 			.then((res) => {
 				let diff = process.hrtime(time);
 				console.log('PRE COMPUTE QUOTA PRE IN %d seconds', diff[0] + diff[1] / 1e9);
-				time = process.hrtime();
-				// console.log("QUOT", res.stats['service-67'], quota['service-67']);
 				return _.merge(quota, res.stats);
 			});
 	}
@@ -1430,7 +1428,7 @@ class Prebook {
 							prebook: 0
 						}
 					});
-					let success = !!(stats.max_available.live * part) && ((stats.max_available.live * part) >= (stats.reserved));
+					let success = !!(stats.max_available.prebook * part) && ((stats.max_available.prebook * part) >= (stats.reserved));
 					// console.log("STATS", part, stats, `${org}.${srv}.${date}`, !!(stats.max_available.live * part) && (stats.max_available.live * part >= (stats.reserved)), stats.max_available.live * part, (stats.reserved));
 					return {
 						success,
