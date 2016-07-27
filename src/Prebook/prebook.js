@@ -25,7 +25,7 @@ class Prebook {
 
 		Gatherer.setTransforms(['live-slots-count', 'prebook-slots-count']);
 		Gatherer.setTtl(config.available_slots_ttl || 45);
-		Gatherer.setThrottle(config.available_slots_throttle || 30);
+		Gatherer.setThrottle(config.available_slots_throttle || 10);
 
 		Collector.init(this.emitter);
 		Collector.setBuilder(this.iris.getCachingFactory.bind(this.iris));
@@ -56,7 +56,7 @@ class Prebook {
 			});
 
 			this.emitter.on('ticket.emit.state', (data) => {
-				if (data.event_name == 'register' || data.event_name == 'book' || data.event_name == 'closed') {
+				if (data.event_name == 'register' || data.event_name == 'book' || data.event_name == 'closed' || data.event_name == 'processing') {
 					Gatherer.invalidate(data.ticket.org_destination);
 				}
 			});
