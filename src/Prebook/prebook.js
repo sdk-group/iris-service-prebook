@@ -25,7 +25,7 @@ class Prebook {
 
 		Gatherer.setTransforms(['live-slots-count', 'prebook-slots-count']);
 		Gatherer.setTtl(config.available_slots_ttl || 45);
-		Gatherer.setThrottle(config.available_slots_throttle || 10);
+		Gatherer.setThrottle(config.available_slots_throttle || 0);
 
 		Collector.init(this.emitter);
 		Collector.setBuilder(this.iris.getCachingFactory.bind(this.iris));
@@ -159,7 +159,7 @@ class Prebook {
 				let lchunks = lsch ? _.flatMap(lsch.has_time_description, 'data.0') : [86400];
 				let pchunks = psch ? _.flatMap(psch.has_time_description, 'data.0') : [86400];
 				let ltd = [now, _.max(lchunks)];
-				let ptd = [now + org.org_merged.prebook_observe_offset, _.max(pchunks)];
+				let ptd = [now, _.max(pchunks)];
 
 				return {
 					org_addr: org.org_addr,
@@ -254,6 +254,9 @@ class Prebook {
 						prebook_percentage: part,
 						reserved: srv_data.reserved
 					};
+					if (org.service_keys[index] == 'service-183') {
+						console.log('------------------------------------\n', org.org_merged.id, acc[org.service_keys[index]], '\n------------------------------------');
+					}
 					return acc;
 				}, {});
 			});
