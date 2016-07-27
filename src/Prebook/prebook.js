@@ -24,7 +24,7 @@ class Prebook {
 		this.patchwerk = Patchwerk(message_bus);
 
 		Gatherer.setTransforms(['live-slots-count', 'prebook-slots-count']);
-		Gatherer.setTtl(config.available_slots_ttl || 300);
+		Gatherer.setTtl(config.available_slots_ttl || 45);
 		Gatherer.setThrottle(config.available_slots_throttle || 30);
 
 		Collector.init(this.emitter);
@@ -48,21 +48,12 @@ class Prebook {
 				}
 			});
 
-			this.emitter.command('taskrunner.add.task', {
-				time: 15,
-				task_name: "",
-				module_name: "prebook",
-				task_type: "add-task",
-				solo: true,
-				// regular: true,
-				params: {
-					_action: "fill-gatherer"
-				}
-			});
-
-
 			this.emitter.listenTask('prebook.save.service.quota', (data) => this.actionUpdateServiceQuota(data));
 			this.emitter.listenTask('prebook.save.service.slots', (data) => this.actionUpdateServiceSlots(data));
+
+			this.emitter.on('engine.ready', () => {
+				return this.actionFillGatherer({});
+			});
 
 			this.emitter.on('ticket.emit.state', (data) => {
 				if (data.event_name == 'register' || data.event_name == 'book' || data.event_name == 'closed') {
@@ -76,17 +67,23 @@ class Prebook {
 		//API
 
 	actionFillGatherer({
-		organization: orgs
+		organization: organization = []
 	}) {
-		console.log("FILL", Gatherer.locked, orgs, Gatherer.timestamp);
 		let org_seq;
-		if (Gatherer.locked)
+		let org_keys = _.filter(organization, org => !Gatherer.locked(org));
+		let is_all = _.isEmpty(organization);
+		console.log("FILL", is_all, organization, org_keys, Gatherer.timestamp);
+		if (_.isEmpty(org_keys) && !is_all)
 			return Promise.resolve(false);
-		Gatherer.lock();
+		if (is_all) {
+			Gatherer.lockEntire();
+		} else {
+			Gatherer.lockSections(org_keys);
+		}
 		let time = process.hrtime();
 		return this.emitter.addTask('workstation', {
 				_action: 'organization-data',
-				organization: orgs,
+				organization: is_all ? null : org_keys,
 				embed_schedules: true
 			})
 			.then(orgs => {
@@ -104,15 +101,25 @@ class Prebook {
 					return acc;
 				}, {});
 				// console.log(data);
-				if (orgs) {
+				if (!is_all) {
 					_.map(data, (org_data, org) => {
 						Gatherer.update(org_data, org);
 					});
+					Gatherer.unlockSections(org_keys);
 				} else {
+					Gatherer.unlockEntire();
 					Gatherer.update(data);
 				}
-				Gatherer.unlock();
 				return Promise.resolve(true);
+			})
+			.catch(err => {
+				console.log("GATH ERR", err.stack);
+				if (!is_all) {
+					Gatherer.unlockSections(org_keys);
+				} else {
+					Gatherer.unlockEntire();
+				}
+				return Promise.reject(err);
 			});
 	}
 
@@ -207,7 +214,13 @@ class Prebook {
 				// console.log(res);
 				return _.reduce(res, (acc, srv, index) => {
 					//@FIXIT: proper way to determine service key
-					let srv_data = _.values(stats[org.service_keys[index]])[0] || {
+					// let success = !!(stats.max_available.live * part) && ((stats.max_available.live * part) >= (stats.reserved));
+					let part = _.clamp(srv.prebook_today_percentage || 0, 0, 100) / 100;;
+					let date = moment.tz(org.org_merged.org_timezone)
+						.format("YYYY-MM-DD");
+					// console.log("FILL SRV", _.get(stats, [org.service_keys[index], date], {}));
+					let srv_data = _.get(stats, [org.service_keys[index], date], {});
+					_.defaultsDeep(srv_data, {
 						available: {
 							live: 0,
 							prebook: 0
@@ -220,11 +233,12 @@ class Prebook {
 							live: 0,
 							prebook: 0
 						},
+						reserved: 0,
 						mapping: {
 							live: [],
 							prebook: []
 						}
-					};
+					});
 					// console.log(org.org_merged.id, org.service_keys[index], _.head(stats[org.service_keys[index]]), srv_data, srv);
 					acc[org.service_keys[index]] = {
 						live_slot_size: srv.live_operation_time,
@@ -236,7 +250,9 @@ class Prebook {
 						live_solid_time: srv_data.max_solid.live,
 						prebook_solid_time: srv_data.max_solid.prebook,
 						live_chunk_mapping: srv_data.mapping.live,
-						prebook_chunk_mapping: srv_data.mapping.prebook
+						prebook_chunk_mapping: srv_data.mapping.prebook,
+						prebook_percentage: part,
+						reserved: srv_data.reserved
 					};
 					return acc;
 				}, {});
@@ -253,9 +269,15 @@ class Prebook {
 					organization: organization
 				})
 				.then(res => Gatherer.stats(organization))
-				.catch(err => {});
+				.catch(err => {
+					return {};
+				});
+		console.log("cached sslots", organization);
+
 		return Gatherer.stats(organization)
-			.catch(err => {});
+			.catch(err => {
+				return {};
+			});
 	}
 
 

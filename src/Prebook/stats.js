@@ -4,10 +4,7 @@ let discover = require('./stat-method/index.js');
 class Gatherer {
 	constructor() {
 		this._initialized = false;
-		this._locked = {
-			value: false,
-			section: []
-		};
+		this._locked = {};
 		this._dataset = {};
 		this._consumers = {};
 		this._computed = {};
@@ -38,20 +35,43 @@ class Gatherer {
 	}
 
 	lock(section) {
-		this._locked.value = true;
+		console.log("lock", section, this.locked(section));
+		if (this.locked(section))
+			return Promise.reject(new Error(`Section ${section} is locked.`));
+		console.log("lock", section, this._locked);
+		_.set(this._locked, [section, 'value'], true);
+		_.set(this._locked, [section, 'ts'], _.now() + this._ttl);
+		console.log("lockres", section, this._locked);
+	}
+
+	lockSections(sections) {
+		_.map(_.castArray(sections), sc => this.lock(sc));
+	}
+
+	unlockSections(sections) {
+		_.map(_.castArray(sections), sc => this.unlock(sc));
+	}
+
+	lockEntire() {
+		this.lock('_global');
+	}
+
+	unlockEntire() {
+		this.unlock('_global');
 	}
 
 	unlock(section) {
-		this._locked.value = false;
+		console.log("unlock", section, this._locked);
+		_.set(this._locked, [section, 'value'], false);
+		_.unset(this._locked, [section, 'ts']);
+		console.log("unlockres", section, this._locked);
 	}
 
-	get locked() {
-		return this._locked.value;
-	}
-
-	alive(section) {
-		console.log(this.timestamp);
-		return (_.get(this.timestamp, section, _.get(this.timestamp, '_last', 0)) + this._ttl > _.now());
+	locked(section) {
+		if (_.get(this._locked, [section, 'ts'], _.now() + this._ttl) < _.now()) {
+			this.unlock(section);
+		}
+		return _.get(this._locked, [section, 'value'], false);
 	}
 
 	recent(section) {
@@ -70,7 +90,7 @@ class Gatherer {
 
 	stats(section) {
 		if (!this.ready)
-			throw new Error("Ain't ready to give you stats");
+			return Promise.reject(new Error("Ain't ready to give you stats"));
 		let cmp = _.get(this._computed, section, false);
 		if (cmp)
 			return cmp;
@@ -83,6 +103,8 @@ class Gatherer {
 	}
 
 	update(data, section = false) {
+		_.set(this.timestamp, ['_last'], _.now());
+		_.unset(this, '_computed');
 		if (!section) {
 			this._fill(data);
 		} else {
@@ -90,8 +112,6 @@ class Gatherer {
 			console.log("set ts", this.timestamp);
 			_.set(this._dataset, section, data);
 		}
-		_.set(this.timestamp, ['_last'], _.now());
-		_.unset(this, '_computed');
 	}
 
 	flush() {
