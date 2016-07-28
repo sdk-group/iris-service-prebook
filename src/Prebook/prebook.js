@@ -73,7 +73,7 @@ class Prebook {
 		let is_all = _.isEmpty(organization);
 		console.log("FILL", is_all, organization, org_keys, Gatherer.timestamp, Gatherer._expiry, Gatherer._locked);
 		if (_.isEmpty(org_keys) && !is_all)
-			return Promise.resolve(false);
+			return Promise.reject(new Error('Not ready yet.'));
 		if (is_all) {
 			Gatherer.lock();
 		} else {
