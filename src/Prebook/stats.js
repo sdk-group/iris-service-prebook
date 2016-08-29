@@ -28,20 +28,20 @@ class Gatherer {
 	}
 
 	unlock(section = '_global') {
-		console.log("unlock", section, this._locked);
+		// console.log("unlock", section, this._locked);
 		_.set(this._locked, [section, 'value'], false);
 		_.unset(this._locked, [section, 'ts']);
-		console.log("unlockres", section, this._locked);
+		// console.log("unlockres", section, this._locked);
 	}
 
 	lock(section = '_global') {
-		console.log("lock", section, this.locked(section));
+		// console.log("lock", section, this.locked(section));
 		if (this.locked(section))
 			return Promise.reject(new Error(`Section ${section} is locked.`));
-		console.log("lock", section, this._locked);
+		// console.log("lock", section, this._locked);
 		_.set(this._locked, [section, 'value'], true);
 		_.set(this._locked, [section, 'ts'], _.now());
-		console.log("lockres", section, this._locked);
+		// console.log("lockres", section, this._locked);
 	}
 
 	locked(section) {
@@ -71,7 +71,7 @@ class Gatherer {
 	update(section, data) {
 		_.unset(this, ['_computed', section]);
 		_.set(this.timestamp, section, _.now());
-		console.log("set ts", this.timestamp);
+		// console.log("set ts", this.timestamp);
 		_.set(this._dataset, section, _.cloneDeep(data));
 	}
 

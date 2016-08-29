@@ -71,7 +71,7 @@ class Prebook {
 		let now = _.now();
 		let org_keys = _.filter(organization, org => !Gatherer.locked(org));
 		let is_all = _.isEmpty(organization);
-		console.log("FILL", is_all, organization, org_keys, Gatherer.timestamp, Gatherer._expiry, Gatherer._locked);
+		// console.log("FILL", is_all, organization, org_keys, Gatherer.timestamp, Gatherer._expiry, Gatherer._locked);
 		if (_.isEmpty(org_keys) && !is_all)
 			return Promise.reject(new Error('Not ready yet.'));
 		if (is_all) {
@@ -254,7 +254,7 @@ class Prebook {
 					};
 					expiry.push(srv.live_operation_time, srv.prebook_operation_time);
 					if (org.service_keys[index] == 'service-183') {
-						console.log('------------------------------------\n', org.org_merged.id, acc[org.service_keys[index]], '\n------------------------------------');
+						// console.log('------------------------------------\n', org.org_merged.id, acc[org.service_keys[index]], '\n------------------------------------');
 					}
 					return acc;
 				}, {});
@@ -269,13 +269,13 @@ class Prebook {
 		organization
 	}) {
 		// console.log("SERVSLOTs", Gatherer.stats(organization));
-		console.log("sslots", organization, Gatherer.expired(organization));
+		// console.log("sslots", organization, Gatherer.expired(organization));
 		if (Gatherer.expired(organization))
 			return this.actionFillGatherer({
 					organization: organization
 				})
 				.then(res => Gatherer.stats(organization))
-		console.log("cached sslots", organization);
+				// console.log("cached sslots", organization);
 
 		return Gatherer.stats(organization)
 	}
@@ -322,7 +322,7 @@ class Prebook {
 					.flatten()
 					.filter(t => (t.expiry < ts_now))
 					.value();
-				console.log("TICKS TO EXPIRE", tickets, ts_now, ticks);
+				// console.log("TICKS TO EXPIRE", tickets, ts_now, ticks);
 				return Promise.map(tickets, (ticket) => {
 					console.log("EXP", ticket.id, ticket.org_destination);
 					return this.emitter.addTask("queue", {
@@ -725,7 +725,7 @@ class Prebook {
 					service_keys: this.services.getSystemName('registry', 'service'),
 					actor_keys: org.agent_keys.all,
 					organization: org.org_merged.id,
-					tick,
+					tickets: tick,
 					method: 'prebook'
 				});
 			})
