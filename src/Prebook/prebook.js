@@ -593,9 +593,10 @@ class Prebook {
 	}
 
 	actionTicketConfirm(fields) {
-		let fnames = ['service', 'operator', 'destination', 'dedicated_date', 'service_count', 'priority', 'workstation', 'user_id', 'user_type', '_action', 'request_id', 'time_description'];
+		let fnames = ['service', 'code', 'operator', 'destination', 'dedicated_date', 'service_count', 'priority', 'workstation', 'user_id', 'user_type', '_action', 'request_id', 'time_description'];
 		let {
 			service,
+			code,
 			operator,
 			destination,
 			dedicated_date,
@@ -675,7 +676,7 @@ class Prebook {
 					computed_priority,
 					expiry: this.emitter.addTask("taskrunner.now")
 						.then((res) => (res + diff)),
-					pin: this.emitter.addTask('code-registry', {
+					pin: code || this.emitter.addTask('code-registry', {
 						_action: 'make-pin',
 						prefix: org.org_merged.pin_code_prefix
 					}),
