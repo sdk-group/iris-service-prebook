@@ -610,6 +610,7 @@ class Prebook {
 		let org;
 		let hst;
 		let diff;
+		let tick;
 		let b_priority;
 		let s_count = _.parseInt(service_count) || 1;
 		let count = 1;
@@ -695,7 +696,7 @@ class Prebook {
 				label
 			}) => {
 				// console.log("EXPIRES IN ||", expiry);
-				let tick = {
+				tick = {
 					booking_method: 'prebook',
 					dedicated_date: org.d_date,
 					booking_date: org.b_date,
@@ -746,14 +747,26 @@ class Prebook {
 					reset: true
 				});
 				// console.log("CONFIRMING", res);
-
+				let keys = _.map(res.placed, "@id");
 				return Promise.props({
 					lookup: Promise.map(_.values(res.placed), (tick) => {
 						return this.iris.ticket_api.setCodeLookup(tick['@id'], tick.code);
 					}),
 					success: _.isEmpty(res.lost),
+					session: this.emitter.addTask('ticket-index', {
+						_action: 'create-session',
+						description: {
+							data: keys,
+							type: res.placed.length == 1 ? 'idle' : 'picker'
+						},
+						uses: keys,
+						dedicated_date: tick.dedicated_date.format('YYYY-MM-DD'),
+						organization: tick.org_destination,
+						code: tick.code,
+						user_info: tick.user_info
+					}),
 					ticket: this.getTickets({
-							keys: _.map(res.placed, "@id")
+							keys: keys
 						})
 						.then(res => {
 							if (_.isEmpty(res)) {
