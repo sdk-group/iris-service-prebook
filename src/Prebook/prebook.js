@@ -592,59 +592,97 @@ class Prebook {
 			});
 	}
 
-	actionTicketConfirm(fields) {
-		let fnames = ['service', 'code', 'operator', 'destination', 'dedicated_date', 'service_count', 'priority', 'workstation', 'user_id', 'user_type', '_action', 'request_id', 'time_description'];
-		let {
-			service,
-			code,
-			operator,
-			destination,
-			dedicated_date,
-			service_count,
-			priority,
-			workstation,
-			time_description
-		} = _.pick(fields, fnames);
-		let user_info = _.omit(fields, fnames);
-		let event_name = 'book';
+	_confirm(org, tickets) {
+		return this.iris.confirm({
+				actor_type: org.agent_type,
+				actor: '*',
+				service_keys: this.services.getSystemName('registry', 'service'),
+				organization: org.org_merged.id,
+				actor_keys: org.agent_keys.all,
+				time_description: org.td,
+				dedicated_date: org.d_date,
+				tickets: tickets,
+				method: 'prebook'
+			})
+			.then(res => {
+				if (!_.isEmpty(res.lost))
+					return Promise.reject(new Error('Failed to place a ticket.'));
+
+				let placed = res.placed,
+					keys = _.map(placed, '@id');
+
+				return Promise.map(placed, (tick) => {
+						return this.iris.ticket_api.setCodeLookup(tick['@id'], tick.code);
+					})
+					.then(res => ({
+						success: true,
+						keys: keys
+					}));
+			})
+			.catch((err) => {
+				console.log("_CONFIRM ERR!", err.stack);
+				global.logger && logger.error(
+					err, {
+						module: 'prebook',
+						method: '_confirm'
+					});
+				return {
+					success: false,
+					reason: err.message
+				};
+			});
+	}
+
+	actionTicketConfirm(data) {
+		let fnames = ['service', 'operator', 'destination', 'code', 'time_description',
+						'dedicated_date', 'service_count', 'priority',
+						'workstation', 'user_id', 'user_type', '_action', 'request_id'];
+		let user_info = _.omit(data, fnames);
+		let source_info = {
+			time_description: data.time_description,
+			service: _.take(_.castArray(data.service), 1),
+			operator: data.operator,
+			destination: data.destination,
+			dedicated_date: data.dedicated_date,
+			service_count: _.castArray(data.service_count),
+			priority: data.priority,
+			code: data.code,
+			user_info: user_info
+		};
+
 		let org;
-		let hst;
-		let diff;
-		let tick;
-		let b_priority;
-		let s_count = _.parseInt(service_count) || 1;
-		let count = 1;
+		let event_name = 'book';
+		let tickets;
 		let context = {};
-		return Promise.props({
-				pre: this.preparePrebookProcessing({
-					workstation,
-					service,
-					dedicated_date,
-					offset: false
-				}),
-				history: this.emitter.addTask('history', {
+		let count = 1;
+		let s_count = _.parseInt(source_info.service_count[0]) || 1;
+		let exp_diff;
+
+		let time = process.hrtime();
+		return this.preparePrebookProcessing({
+				workstation: data.workstation,
+				service: source_info.service[0],
+				dedicated_date: data.dedicated_date,
+				offset: false
+			})
+			.then((pre) => {
+				org = pre;
+
+				return this.emitter.addTask('history', {
 					_action: 'make-entry',
 					subject: {
 						type: 'terminal',
-						id: workstation
+						id: data.workstation
 					},
 					event_name,
 					reason: {}
-				}),
-				basic_priority: this.emitter.addTask('ticket', {
-					_action: 'basic-priorities'
-				})
+				});
 			})
-			.then(({
-				basic_priority,
-				pre,
-				history
-			}) => {
-				hst = history;
-				hst.local_time = moment.tz(pre.org_merged.org_timezone)
+			.then(history => {
+				history.local_time = moment.tz(org.org_merged.org_timezone)
 					.format();
-				b_priority = basic_priority;
-				return this.actionGetStats(pre);
+				source_info.history = [history];
+				return this.actionGetStats(org);
 			})
 			.then((keyed) => {
 				let pre = keyed[0];
@@ -652,88 +690,42 @@ class Prebook {
 				count = _.round((pre.available.prebook || 0) / (pre.data.srv.prebook_operation_time * s_count));
 				org = pre.data;
 
-				diff = org.d_date.clone()
+				exp_diff = org.d_date.clone()
 					.startOf('day')
-					.add(time_description[0], 'seconds')
+					.add(data.time_description[0], 'seconds')
 					.diff(moment.tz(org.org_merged.org_timezone)) + org.org_merged.prebook_expiration_interval * 1000;
 
-				// console.log("EXPIRES IN", diff, org.org_merged.prebook_expiration_interval);
-				let prior_keys = _.keys(priority);
-				let basic = _.mapValues(_.pick(b_priority, prior_keys), v => v.params);
-				let local = _.pick(org.org_merged.priority_description || {}, prior_keys);
-				let computed_priority = _.merge(basic, local, priority);
+				// console.log("EXPIRES IN", exp_diff, org.org_merged.prebook_expiration_interval);
 
-				let prior_prefix = _.join(_.sortedUniq(_.sortBy(_.map(computed_priority, "prefix"))), '');
-				let prefix = _.join([org.org_merged.prebook_label_prefix, prior_prefix, org.srv.prefix], '');
-				prefix = !_.isEmpty(prefix) && prefix;
+				return this.emitter.addTask("taskrunner.now")
+					.then((res) => (res + exp_diff));
+			})
+			.then((expiry) => {
 
-				if (org.srv.priority > 0)
-					computed_priority['service'] = {
-						value: org.srv.priority
-					};
-				//+manual_up / manual_down
+				source_info.dedicated_date = org.d_date.format('YYYY-MM-DD');
+				source_info.booking_method = 'prebook';
+				source_info.state = 'booked';
+				source_info.expiry = expiry;
 
-				return Promise.props({
-					computed_priority,
-					expiry: this.emitter.addTask("taskrunner.now")
-						.then((res) => (res + diff)),
-					pin: code || this.emitter.addTask('code-registry', {
-						_action: 'make-pin',
-						prefix: org.org_merged.pin_code_prefix
-					}),
-					label: this.emitter.addTask('code-registry', {
-						_action: 'make-label',
-						prefix,
-						office: org.org_merged.id,
-						date: org.d_date.format("YYYY-MM-DD")
-					})
+				return this.emitter.addTask('ticket-index', {
+					_action: 'confirm-session',
+					source: source_info,
+					org_data: org.org_merged,
+					confirm: this._confirm.bind(this, org)
 				});
 			})
-			.then(({
-				computed_priority,
-				pin,
-				expiry,
-				label
-			}) => {
-				// console.log("EXPIRES IN ||", expiry);
-				tick = {
-					booking_method: 'prebook',
-					dedicated_date: org.d_date,
-					booking_date: org.b_date,
-					time_description,
-					priority: computed_priority,
-					code: pin,
-					user_info: user_info,
-					service: service,
-					label: label,
-					operator: operator,
-					destination: destination,
-					locked_fields: {
-						operator: operator,
-						destination: destination
-					},
-					history: [hst],
-					service_count: s_count,
-					state: 'booked',
-					called: 0,
-					org_destination: org.org_merged.id,
-					expiry
-				};
-				return this.iris.confirm({
-					actor_type: org.agent_type,
-					actor: '*',
-					time_description: org.td,
-					dedicated_date: org.d_date,
-					service_keys: this.services.getSystemName('registry', 'service'),
-					actor_keys: org.agent_keys.all,
-					organization: org.org_merged.id,
-					tickets: tick,
-					method: 'prebook'
-				});
-			})
-			.then((res) => {
-				if (!_.isEmpty(res.lost))
-					return Promise.reject(new Error('Failed to place a ticket.'));
+			.then((confirmed) => {
+				// console.log("RES", require('util')
+				// 	.inspect(confirmed, {
+				// 		depth: null
+				// 	}));
+				// let diff = process.hrtime(time);
+				// console.log('PB CONFIRM FIN IN %d mseconds', (diff[0] * 1e9 + diff[1]) / 1000000);
+				// time = process.hrtime();
+
+				tickets = confirmed.response;
+
+
 				this.emitter.command("prebook.save.service.quota", {
 					data: org,
 					reset: true
@@ -747,61 +739,39 @@ class Prebook {
 					reset: true
 				});
 				// console.log("CONFIRMING", res);
-				let keys = _.map(res.placed, "@id");
-				return Promise.props({
-					lookup: Promise.map(_.values(res.placed), (tick) => {
-						return this.iris.ticket_api.setCodeLookup(tick['@id'], tick.code);
-					}),
-					success: _.isEmpty(res.lost),
-					session: this.emitter.addTask('ticket-index', {
-						_action: 'create-session',
-						description: {
-							data: keys,
-							type: res.placed.length == 1 ? 'idle' : 'picker'
-						},
-						uses: keys,
-						dedicated_date: tick.dedicated_date.format('YYYY-MM-DD'),
-						organization: tick.org_destination,
-						code: tick.code,
-						user_info: tick.user_info
-					}),
-					ticket: this.getTickets({
-							keys: keys
-						})
-						.then(res => {
-							if (_.isEmpty(res)) {
-								return Promise.reject(new Error('Failed to place a ticket.'));
-							} else {
-								let tick = res[0];
-								console.log("TICKET CNF", tick);
 
-								this.emitter.emit('ticket.emit.state', {
-									org_addr: org.org_addr,
-									org_merged: org.org_merged,
-									ticket: tick,
-									event_name,
-									workstation
-								});
+				_.map(tickets, tick => {
+					console.log("TICKET CNF", tick);
+					this.emitter.emit('ticket.emit.state', {
+						org_addr: org.org_addr,
+						org_merged: org.org_merged,
+						ticket: tick,
+						event_name: event_name,
+						workstation: data.workstation
+					});
+					this.emitter.command('taskrunner.add.task', {
+						time: exp_diff / 1000,
+						task_name: "",
+						module_name: "queue",
+						task_type: "add-task",
+						cancellation_code: tick.code,
+						solo: true,
+						params: {
+							_action: "ticket-expire",
+							ticket: tick.id,
+							organization: tick.org_destination,
+							auto: true
+						}
+					});
 
-								this.emitter.command('taskrunner.add.task', {
-									time: diff / 1000,
-									task_name: "",
-									module_name: "queue",
-									task_type: "add-task",
-									cancellation_code: tick.code,
-									solo: true,
-									params: {
-										_action: "ticket-expire",
-										ticket: tick.id,
-										organization: tick.org_destination,
-										auto: true
-									}
-								});
-								return tick;
-							}
-						}),
-					context
 				});
+
+				return {
+					success: true,
+					ticket: tickets,
+					context: context
+				};
+
 			})
 			.catch((err) => {
 				console.log("PB CONFIRM ERR!", err.stack);
@@ -818,22 +788,24 @@ class Prebook {
 			});
 	}
 
+
 	actionTicketObserve({
 		service,
 		dedicated_date,
 		workstation,
 		operator,
 		destination,
-		service_count = 1,
-		per_service = 10000
+		service_count = [1]
 	}) {
 		let org;
-		let s_count = _.parseInt(service_count) || 1;
+		let s_count = _.castArray(service_count);
+		s_count = _.parseInt(s_count[0]) || 1;
+		let services = _.castArray(service);
 		let time = process.hrtime();
 		return this.preparePrebookProcessing({
-				workstation,
-				service,
-				dedicated_date,
+				workstation: workstation,
+				service: services[0],
+				dedicated_date: dedicated_date,
 				offset: true
 			})
 			.then((res) => {
@@ -844,21 +816,20 @@ class Prebook {
 				return this.actionGetStats(res);
 			})
 			.then((keyed) => {
-				console.log("____________\nQUOTA", keyed);
+				// console.log("____________\nQUOTA", keyed);
 				let diff = process.hrtime(time);
 				console.log('PRE OBSERVE GOT STATS IN %d seconds', diff[0] + diff[1] / 1e9);
 				time = process.hrtime();
-
 				let pre = keyed[0];
 				let success = pre.success;
 				let count = _.round((pre.available.prebook || 0) / (pre.data.srv.prebook_operation_time * s_count));
 				org = pre.data;
-				// console.log("OBSERVING PREBOOK II", count, pre.available, org.org_merged.prebook_observe_max_slots || count);
+				console.log("OBSERVING PREBOOK II", count, pre.available, org.org_merged.prebook_observe_max_slots || count);
 				return !success ? [] : this.getServiceSlots({
 					preprocessed: org,
-					operator,
-					count,
-					s_count
+					operator: operator,
+					count: count,
+					s_count: s_count
 				});
 			})
 			.then((res) => {
@@ -886,6 +857,7 @@ class Prebook {
 				};
 			});
 	}
+
 	actionAvailableDays({
 		service,
 		workstation,
@@ -899,10 +871,12 @@ class Prebook {
 		let done;
 		let time = process.hrtime();
 		// console.log("OBSERVING AVDAYS PREBOOK", service, workstation, start, end);
-		let s_count = _.parseInt(service_count) || 1;
+		let s_count = _.castArray(service_count);
+		s_count = _.parseInt(s_count[0]) || 1;
+		let services = _.castArray(service);
 		return this.prepareAvailableDaysProcessing({
 				workstation,
-				service,
+				service: services[0],
 				start,
 				end
 			})
@@ -1141,7 +1115,10 @@ class Prebook {
 		let time = process.hrtime();
 		return this.iris.ticket_api.getServiceSlotsCache(preprocessed.org_merged.id, preprocessed.service, preprocessed.d_date.format("YYYY-MM-DD"))
 			.then((res) => {
-
+				// console.log("SLOTS CACHE", require('util')
+				// 	.inspect(res, {
+				// 		depth: null
+				// 	}));
 				let diff = process.hrtime(time);
 				console.log('GET SERVICE SLOTS CACHE IN %d seconds', diff[0] + diff[1] / 1e9);
 				time = process.hrtime();
@@ -1154,6 +1131,10 @@ class Prebook {
 					})
 					.then((computed) => {
 						// console.log("COMPUTED", computed);
+						// console.log("SLOTS CACHE CMP", require('util')
+						// 	.inspect(computed, {
+						// 		depth: null
+						// 	}));
 						return _.map(computed, (t) => _.pick(t, ['time_description', 'operator', 'destination', 'source'])) || [];
 					});
 			})
@@ -1304,7 +1285,7 @@ class Prebook {
 				actor_keys: preprocessed.agent_keys.all,
 				actor_type: preprocessed.agent_type,
 				organization: preprocessed.org_merged.id,
-				count,
+				count: count,
 				service_count: s_count,
 				method: 'prebook'
 			})
