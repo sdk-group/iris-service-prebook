@@ -634,6 +634,7 @@ class Prebook {
 	}
 
 	actionTicketConfirm(data) {
+		console.log(data);
 		let fnames = ['service', 'operator', 'destination', 'code', 'time_description',
 						'dedicated_date', 'service_count', 'priority',
 						'workstation', 'user_id', 'user_type', '_action', 'request_id'];
@@ -1290,7 +1291,7 @@ class Prebook {
 				method: 'prebook'
 			})
 			.then(res => {
-				return _.values(res)
+				return res.placed;
 			});
 	}
 
