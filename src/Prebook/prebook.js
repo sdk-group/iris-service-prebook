@@ -1291,7 +1291,7 @@ class Prebook {
 				method: 'prebook'
 			})
 			.then(res => {
-				return res.placed;
+				return _.filter(res, t => !!t.source);
 			});
 	}
 
