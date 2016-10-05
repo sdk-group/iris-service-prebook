@@ -446,6 +446,7 @@ class Prebook {
 		});
 		let chunks = sch ? _.flatMap(sch.has_time_description, 'data.0') : [86400];
 		let today = booking.isSame(dedicated, 'day');
+		let late = !today && dedicated.isBefore(moment.tz(tz), 'day');
 		let start = today ? now + offset : _.min(chunks);
 		let td = [start, _.max(chunks)];
 		// console.log("SCH", today, td, sch, dedicated.format('dddd'));
@@ -454,6 +455,7 @@ class Prebook {
 			d_date: dedicated,
 			b_date: booking.format(),
 			today,
+			late,
 			td
 		};
 	}
@@ -827,7 +829,8 @@ class Prebook {
 				let diff = process.hrtime(time);
 				console.log('PRE OBSERVE PREPARED IN %d seconds', diff[0] + diff[1] / 1e9);
 				time = process.hrtime();
-
+				if (res.late)
+					return Promise.reject(new Error("Dedicated date is in past."));
 				return this.actionGetStats(res);
 			})
 			.then((keyed) => {
