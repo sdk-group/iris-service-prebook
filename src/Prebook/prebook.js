@@ -610,7 +610,7 @@ class Prebook {
 				if (!_.isEmpty(res.lost))
 					return Promise.reject(new Error('Failed to place a ticket.'));
 
-				let placed = res.placed,
+				let placed = res.placed || [],
 					keys = _.map(placed, '@id');
 
 				return Promise.map(placed, (tick) => {
