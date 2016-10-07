@@ -607,7 +607,7 @@ class Prebook {
 				method: 'prebook'
 			})
 			.then(res => {
-				if (!_.isEmpty(res.lost))
+				if (!_.isEmpty(res.lost) && (res.placed.length != tickets.length))
 					return Promise.reject(new Error('Failed to place a ticket.'));
 
 				let placed = res.placed || [],
@@ -725,7 +725,8 @@ class Prebook {
 				// let diff = process.hrtime(time);
 				// console.log('PB CONFIRM FIN IN %d mseconds', (diff[0] * 1e9 + diff[1]) / 1000000);
 				// time = process.hrtime();
-
+				if (!confirmed.success)
+					return Promise.reject(new Error(confirmed.reason));
 				tickets = confirmed.response;
 
 
