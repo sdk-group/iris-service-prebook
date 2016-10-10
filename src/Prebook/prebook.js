@@ -678,7 +678,10 @@ class Prebook {
 						id: data.workstation
 					},
 					event_name,
-					reason: {}
+					reason: {},
+					context: {
+						workstation: data.workstation
+					}
 				});
 			})
 			.then(history => {
