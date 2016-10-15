@@ -54,6 +54,7 @@ class Prebook {
 			});
 
 			this.emitter.on('ticket.emit.state', (data) => {
+				console.log("TICK EMIT STATE GATH");
 				if (data.event_name == 'register' || data.event_name == 'book' || data.event_name == 'closed' || data.event_name == 'processing') {
 					Gatherer.invalidate(data.ticket.org_destination);
 				}
@@ -253,9 +254,7 @@ class Prebook {
 						reserved: srv_data.reserved
 					};
 					expiry.push(srv.live_operation_time, srv.prebook_operation_time);
-					if (org.service_keys[index] == 'service-183') {
-						// console.log('------------------------------------\n', org.org_merged.id, acc[org.service_keys[index]], '\n------------------------------------');
-					}
+
 					return acc;
 				}, {});
 				return {
@@ -537,15 +536,21 @@ class Prebook {
 	}
 	preparePrebookProcessing({
 		workstation,
+		organization,
 		service,
 		dedicated_date,
 		offset = true
 	}) {
 		let org;
-		return this.actionWorkstationOrganizationData({
-				workstation,
-				embed_schedules: true
-			})
+		return (workstation ? this.actionWorkstationOrganizationData({
+					workstation: workstation,
+					embed_schedules: true
+				}) : this.emitter.addTask('workstation', {
+					_action: 'organization-data',
+					organization: organization,
+					embed_schedules: true
+				})
+				.then(res => res[organization]))
 			.then((pre) => {
 				org = pre;
 				let mode = org.org_merged.workstation_resource_enabled ? 'destination' : 'operator';
@@ -594,7 +599,7 @@ class Prebook {
 			});
 	}
 
-	_confirm(org, tickets) {
+	_confirm(force, org, tickets) {
 		return this.iris.confirm({
 				actor_type: org.agent_type,
 				actor: '*',
@@ -604,7 +609,8 @@ class Prebook {
 				time_description: org.td,
 				dedicated_date: org.d_date,
 				tickets: tickets,
-				method: 'prebook'
+				method: 'prebook',
+				nocheck: !!force
 			})
 			.then(res => {
 				if (!_.isEmpty(res.lost) && (res.placed.length != tickets.length))
@@ -637,10 +643,12 @@ class Prebook {
 
 	actionTicketConfirm(data) {
 		console.log(data);
-		let fnames = ['service', 'operator', 'destination', 'code', 'time_description',
-						'dedicated_date', 'service_count', 'priority',
+		let fnames = ['service', 'operator', 'destination', 'code', 'force', 'token',
+						'org_destination', 'booking_method', 'time_description', 'label',
+						'dedicated_date', 'service_count', 'priority', 'user_info',
 						'workstation', 'user_id', 'user_type', '_action', 'request_id'];
-		let user_info = _.omit(data, fnames);
+		let user_info = data.user_info || _.omit(data, fnames);
+		let force = !!data.force;
 		let source_info = {
 			time_description: data.time_description,
 			service: _.take(_.castArray(data.service), 1),
@@ -650,6 +658,7 @@ class Prebook {
 			service_count: _.castArray(data.service_count),
 			priority: data.priority,
 			code: data.code,
+			label: data.label,
 			user_info: user_info
 		};
 
@@ -664,6 +673,7 @@ class Prebook {
 		let time = process.hrtime();
 		return this.preparePrebookProcessing({
 				workstation: data.workstation,
+				organization: data.org_destination,
 				service: source_info.service[0],
 				dedicated_date: data.dedicated_date,
 				offset: false
@@ -717,7 +727,7 @@ class Prebook {
 					_action: 'confirm-session',
 					source: source_info,
 					org_data: org.org_merged,
-					confirm: this._confirm.bind(this, org)
+					confirm: this._confirm.bind(this, force, org)
 				});
 			})
 			.then((confirmed) => {
