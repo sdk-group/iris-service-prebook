@@ -72,7 +72,7 @@ class Prebook {
 		let now = _.now();
 		let org_keys = _.filter(organization, org => !Gatherer.locked(org));
 		let is_all = _.isEmpty(organization);
-		// console.log("FILL", is_all, organization, org_keys, Gatherer.timestamp, Gatherer._expiry, Gatherer._locked);
+		console.log("FILL", is_all, organization, org_keys, Gatherer.timestamp, Gatherer._expiry, Gatherer._locked);
 		if (_.isEmpty(org_keys) && !is_all)
 			return Promise.reject(new Error('Not ready yet.'));
 		if (is_all) {
@@ -119,11 +119,60 @@ class Prebook {
 			});
 	}
 
+	_statsByCount(organization_data) {
+		let org = organization_data;
+		let stats;
+		return this.services.getServiceIds()
+			.then(srv => {
+				org.service_keys = srv;
+				return this.patchwerk.get("TicketCounter", {
+					department: org.org_merged.id,
+					date: moment.tz(org.org_merged.org_timezone)
+						.format("YYYY-MM-DD")
+				});
+			})
+			.then((res) => {
+				let val = (res.getSource() || 0) + 1;
+				stats = {
+					forced_live_slots_count: val,
+					forced_max_live_slots_count: org.org_merged.max_slots_per_day,
+					forced_prebook_slots_count: val,
+					forced_max_prebook_slots_count: org.org_merged.max_slots_per_day
+				};
+				return Promise.mapSeries(org.service_keys, (service) => {
+					return this.patchwerk.get('Service', {
+						department: org.org_merged.id,
+						counter: _.last(_.split(service, '-'))
+					});
+				});
+			})
+			.then((res) => {
+				// console.log(res);
+				let expiry = [];
+
+				let result = _.reduce(res, (acc, srv, index) => {
+					// console.log(org.org_merged.id, org.service_keys[index], _.head(stats[org.service_keys[index]]), srv_data, srv);
+					acc[org.service_keys[index]] = stats;
+					expiry.push(srv.live_operation_time, srv.prebook_operation_time);
+
+					return acc;
+				}, {});
+				return {
+					data: result,
+					expiry: _.min(expiry)
+				};
+			})
+	}
+
 	statsByOrganization(organization_data) {
 		let org = organization_data;
 		let stats;
 		let mode = org.org_merged.workstation_resource_enabled ? 'destination' : 'operator';
 		org.agent_type = mode;
+		if (org.org_merged.max_slots_per_day)
+			return this._statsByCount(org);
+
+
 		return Promise.props({
 				agent_keys: (mode == 'destination' ? this.emitter.addTask('workstation', {
 					_action: 'resource-keys',
@@ -274,9 +323,16 @@ class Prebook {
 					organization: organization
 				})
 				.then(res => Gatherer.stats(organization))
-				// console.log("cached sslots", organization);
+				.catch(err => {
+					global.logger && logger.info(_ref29, {
+						module: 'queue',
+						method: 'service-stats'
+					});
+					return Gatherer.stats(organization);
+				});
+		// console.log("cached sslots", organization);
 
-		return Gatherer.stats(organization)
+		return Gatherer.stats(organization);
 	}
 
 
@@ -821,7 +877,6 @@ class Prebook {
 			})
 			.then((res) => {
 				let val = res.getSource() || 0;
-				console.log("VAL", val, org.org_merged.max_slots_per_day);
 				if (val + 1 < org.org_merged.max_slots_per_day)
 					return {
 						details: [],
