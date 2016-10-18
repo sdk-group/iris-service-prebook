@@ -236,7 +236,7 @@ class Prebook {
 					// let success = !!(stats.max_available.live * part) && ((stats.max_available.live * part) >= (stats.reserved));
 					let part = _.clamp(srv.prebook_today_percentage || 0, 0, 100) / 100;;
 					// console.log("FILL SRV", _.get(stats, [org.service_keys[index], date], {}));
-					let srv_data = _.get(stats, [org.service_keys[index], date], {});
+					let srv_data = stats[org.service_keys[index]] && stats[org.service_keys[index]][date] || {};
 					_.defaultsDeep(srv_data, dummy);
 					// console.log(org.org_merged.id, org.service_keys[index], _.head(stats[org.service_keys[index]]), srv_data, srv);
 					acc[org.service_keys[index]] = {
@@ -680,6 +680,14 @@ class Prebook {
 			})
 			.then((pre) => {
 				org = pre;
+				if (org.org_merged.max_slots_per_day)
+					force = true;
+				return org.org_merged.max_slots_per_day ? this._observeByCount(org, source_info.service)
+					.then(res => res.success) : true;
+			})
+			.then((approval) => {
+				if (org.org_merged.max_slots_per_day && !approval)
+					return Promise.reject("Failed to place a ticket: reached slots limit.");
 
 				return this.emitter.addTask('history', {
 					_action: 'make-entry',
@@ -805,6 +813,27 @@ class Prebook {
 			});
 	}
 
+
+	_observeByCount(org, services) {
+		return this.patchwerk.get("TicketCounter", {
+				department: org.org_merged.id,
+				date: org.d_date.format('YYYY-MM-DD')
+			})
+			.then((res) => {
+				let val = res.getSource() || 0;
+				console.log("VAL", val, org.org_merged.max_slots_per_day);
+				if (val + 1 < org.org_merged.max_slots_per_day)
+					return {
+						details: [],
+						success: true
+					};
+				else
+					return {
+						details: services,
+						success: false
+					};
+			});
+	}
 
 	actionTicketObserve({
 		service,
