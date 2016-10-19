@@ -75,7 +75,7 @@ class Gatherer {
 		this._computed && (this._computed[section] = null);
 		this.timestamp[section] = _.now();
 		// console.log("set ts", this.timestamp);
-		rhis._dataset[section] = _.cloneDeep(data);
+		this._dataset[section] = _.cloneDeep(data);
 	}
 
 	setExpiry(section, ts) {
