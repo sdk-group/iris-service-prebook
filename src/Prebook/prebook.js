@@ -122,14 +122,10 @@ class Prebook {
 	_statsByCount(organization_data) {
 		let org = organization_data;
 		let stats;
-		return this.services.getServiceIds()
-			.then(srv => {
-				org.service_keys = srv;
-				return this.patchwerk.get("TicketCounter", {
-					department: org.org_merged.id,
-					date: moment.tz(org.org_merged.org_timezone)
-						.format("YYYY-MM-DD")
-				});
+		return this.patchwerk.get("TicketCounter", {
+				department: org.org_merged.id,
+				date: moment.tz(org.org_merged.org_timezone)
+					.format("YYYY-MM-DD")
 			})
 			.then((res) => {
 				let val = (res.getSource() || 0) + 1;
@@ -139,27 +135,14 @@ class Prebook {
 					forced_prebook_slots_count: val,
 					forced_max_prebook_slots_count: org.org_merged.max_slots_per_day
 				};
-				return Promise.mapSeries(org.service_keys, (service) => {
-					return this.patchwerk.get('Service', {
-						department: org.org_merged.id,
-						counter: _.last(_.split(service, '-'))
-					});
-				});
-			})
-			.then((res) => {
-				// console.log(res);
-				let expiry = [];
 
-				let result = _.reduce(res, (acc, srv, index) => {
-					// console.log(org.org_merged.id, org.service_keys[index], _.head(stats[org.service_keys[index]]), srv_data, srv);
-					acc[org.service_keys[index]] = stats;
-					expiry.push(srv.live_operation_time, srv.prebook_operation_time);
 
-					return acc;
-				}, {});
+				let result = {
+					"*": stats
+				};
 				return {
 					data: result,
-					expiry: _.min(expiry)
+					expiry: 420
 				};
 			})
 	}
@@ -323,14 +306,14 @@ class Prebook {
 					organization: organization
 				})
 				.then(res => Gatherer.stats(organization))
-				.catch(err => {
-					global.logger && logger.info(_ref29, {
-						module: 'queue',
-						method: 'service-stats'
-					});
-					return Gatherer.stats(organization);
-				});
-		// console.log("cached sslots", organization);
+				// .catch(err => {
+				// 	global.logger && logger.info(_ref29, {
+				// 		module: 'queue',
+				// 		method: 'service-stats'
+				// 	});
+				// 	return Gatherer.stats(organization);
+				// });
+				// console.log("cached sslots", organization);
 
 		return Gatherer.stats(organization);
 	}

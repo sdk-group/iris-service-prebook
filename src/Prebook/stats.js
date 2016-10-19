@@ -29,8 +29,9 @@ class Gatherer {
 
 	unlock(section = '_global') {
 		// console.log("unlock", section, this._locked);
-		_.set(this._locked, [section, 'value'], false);
-		_.unset(this._locked, [section, 'ts']);
+		this._locked[section] = {
+			value: false
+		};
 		// console.log("unlockres", section, this._locked);
 	}
 
@@ -39,44 +40,46 @@ class Gatherer {
 		if (this.locked(section))
 			return Promise.reject(new Error(`Section ${section} is locked.`));
 		// console.log("lock", section, this._locked);
-		_.set(this._locked, [section, 'value'], true);
-		_.set(this._locked, [section, 'ts'], _.now());
+		this._locked[section] = {
+			value: true,
+			ts: _.now()
+		};
 		// console.log("lockres", section, this._locked);
 	}
 
 	locked(section) {
-		return _.get(this._locked, ['_global', 'value'], false) || _.get(this._locked, [section, 'value'], false);
+		return this._locked && this._locked._global && this._locked._global.value || false || this._locked && this._locked[section] && this._locked[section].value || false;
 	}
 
 	invalidate(section) {
-		_.set(this._expiry, section, 0);
+		this._expiry[section] = 0;
 	}
 
 	expired(section) {
-		return _.get(this._expiry, section, 0) <= _.now();
+		return (this._expiry[section] || 0) <= _.now();
 	}
 
 	stats(section) {
-		let cmp = _.get(this._computed, section, false);
+		let cmp = this._computed[section] || false;
 		if (cmp)
 			return cmp;
-		let dataset = _.get(this._dataset, section, {});
+		let dataset = this._dataset[section] || {};
 		let res = _.mapValues(dataset, (datapart) => {
 			return _.mapValues(this._consumers, (fn) => fn(datapart));
 		});
-		_.set(this._computed, section, res);
+		this._computed[section] = res;
 		return Promise.resolve(res);
 	}
 
 	update(section, data) {
-		_.unset(this, ['_computed', section]);
-		_.set(this.timestamp, section, _.now());
+		this._computed && this._computed[section] = null;
+		this.timestamp[section] = _.now();
 		// console.log("set ts", this.timestamp);
-		_.set(this._dataset, section, _.cloneDeep(data));
+		rhis._dataset[section] = _.cloneDeep(data);
 	}
 
 	setExpiry(section, ts) {
-		_.set(this._expiry, section, ts);
+		this._expiry[section] = ts;
 	}
 
 }
