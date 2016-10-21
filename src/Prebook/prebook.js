@@ -152,7 +152,7 @@ class Prebook {
 		let stats;
 		let mode = org.org_merged.workstation_resource_enabled ? 'destination' : 'operator';
 		org.agent_type = mode;
-		if (org.org_merged.max_slots_per_day)
+		if (_.isNumber(org.org_merged.max_slots_per_day))
 			return this._statsByCount(org);
 
 
@@ -166,7 +166,7 @@ class Prebook {
 					role: 'Operator',
 					organization: org.org_merged.id
 				})),
-				srv: this.services.getServiceIds()
+				srv: this.services.getServiceIds(org.org_merged.id)
 			})
 			.then(({
 				agent_keys,
@@ -207,7 +207,7 @@ class Prebook {
 					actor: org.agent_keys.active,
 					time_description: org.ltd,
 					dedicated_date: org.d_date,
-					service_keys: this.services.getSystemName('registry', 'service'),
+					service_keys: this.services.getSystemName('registry', 'service', [org.org_merged.id]),
 					actor_keys: org.agent_keys.all,
 					actor_type: org.agent_type,
 					organization: org.org_merged.id,
@@ -221,7 +221,7 @@ class Prebook {
 					actor: '*',
 					time_description: org.ptd,
 					dedicated_date: org.d_date,
-					service_keys: this.services.getSystemName('registry', 'service'),
+					service_keys: this.services.getSystemName('registry', 'service', [org.org_merged.id]),
 					actor_keys: org.agent_keys.all,
 					actor_type: org.agent_type,
 					organization: org.org_merged.id,
@@ -642,7 +642,7 @@ class Prebook {
 		return this.iris.confirm({
 				actor_type: org.agent_type,
 				actor: '*',
-				service_keys: this.services.getSystemName('registry', 'service'),
+				service_keys: this.services.getSystemName('registry', 'service', [org.org_merged.id]),
 				organization: org.org_merged.id,
 				actor_keys: org.agent_keys.all,
 				time_description: org.td,
@@ -719,14 +719,14 @@ class Prebook {
 			})
 			.then((pre) => {
 				org = pre;
-				if (org.org_merged.max_slots_per_day)
-					force = true;
-				return org.org_merged.max_slots_per_day ? this._observeByCount(org, source_info.service)
-					.then(res => res.success) : true;
-			})
-			.then((approval) => {
-				if (org.org_merged.max_slots_per_day && !approval)
-					return Promise.reject("Failed to place a ticket: reached slots limit.");
+			// 	if (org.org_merged.max_slots_per_day)
+			// 		force = true;
+			// 	return org.org_merged.max_slots_per_day ? this._observeByCount(org, source_info.service)
+			// 		.then(res => res.success) : true;
+			// })
+			// .then((approval) => {
+			// 	if (org.org_merged.max_slots_per_day && !approval)
+			// 		return Promise.reject("Failed to place a ticket: reached slots limit.");
 
 				return this.emitter.addTask('history', {
 					_action: 'make-entry',
@@ -1366,7 +1366,7 @@ class Prebook {
 				}],
 				time_description: preprocessed.td,
 				dedicated_date: preprocessed.d_date,
-				service_keys: this.services.getSystemName('registry', 'service'),
+				service_keys: this.services.getSystemName('registry', 'service', [preprocessed.org_merged.id]),
 				actor_keys: preprocessed.agent_keys.all,
 				actor_type: preprocessed.agent_type,
 				organization: preprocessed.org_merged.id,
@@ -1402,7 +1402,7 @@ class Prebook {
 		// 		actor: '*',
 		// 		time_description: preprocessed.td,
 		// 		dedicated_date: preprocessed.d_date,
-		// 		service_keys: this.services.getSystemName('registry', 'service'),
+		// 		service_keys: this.services.getSystemName('registry', 'service', [preprocessed.org_merged.id]),
 		// 		actor_keys: preprocessed.agent_keys.all,
 		// 		actor_type: preprocessed.agent_type,
 		// 		organization: preprocessed.org_merged.id,
@@ -1419,7 +1419,7 @@ class Prebook {
 				actor: '*',
 				time_description: preprocessed.td,
 				dedicated_date: preprocessed.d_date,
-				service_keys: this.services.getSystemName('registry', 'service'),
+				service_keys: this.services.getSystemName('registry', 'service', [preprocessed.org_merged.id]),
 				actor_keys: preprocessed.agent_keys.all,
 				actor_type: preprocessed.agent_type,
 				organization: preprocessed.org_merged.id,
