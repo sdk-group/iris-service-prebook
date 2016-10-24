@@ -305,15 +305,7 @@ class Prebook {
 			return this.actionFillGatherer({
 					organization: organization
 				})
-				.then(res => Gatherer.stats(organization))
-				// .catch(err => {
-				// 	global.logger && logger.info(_ref29, {
-				// 		module: 'queue',
-				// 		method: 'service-stats'
-				// 	});
-				// 	return Gatherer.stats(organization);
-				// });
-				// console.log("cached sslots", organization);
+				.then(res => Gatherer.stats(organization));
 
 		return Gatherer.stats(organization);
 	}
@@ -719,14 +711,14 @@ class Prebook {
 			})
 			.then((pre) => {
 				org = pre;
-			// 	if (org.org_merged.max_slots_per_day)
-			// 		force = true;
-			// 	return org.org_merged.max_slots_per_day ? this._observeByCount(org, source_info.service)
-			// 		.then(res => res.success) : true;
-			// })
-			// .then((approval) => {
-			// 	if (org.org_merged.max_slots_per_day && !approval)
-			// 		return Promise.reject("Failed to place a ticket: reached slots limit.");
+				// 	if (org.org_merged.max_slots_per_day)
+				// 		force = true;
+				// 	return org.org_merged.max_slots_per_day ? this._observeByCount(org, source_info.service)
+				// 		.then(res => res.success) : true;
+				// })
+				// .then((approval) => {
+				// 	if (org.org_merged.max_slots_per_day && !approval)
+				// 		return Promise.reject("Failed to place a ticket: reached slots limit.");
 
 				return this.emitter.addTask('history', {
 					_action: 'make-entry',

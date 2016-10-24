@@ -62,7 +62,7 @@ class Gatherer {
 	stats(section) {
 		let cmp = this._computed[section] || false;
 		if (cmp)
-			return cmp;
+			return Promise.resolve(cmp);
 		let dataset = this._dataset[section] || {};
 		let res = _.mapValues(dataset, (datapart) => {
 			return _.mapValues(this._consumers, (fn) => fn(datapart));
