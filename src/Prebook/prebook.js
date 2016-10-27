@@ -305,6 +305,7 @@ class Prebook {
 			return this.actionFillGatherer({
 					organization: organization
 				})
+				.catch((err) => ({}))
 				.then(res => Gatherer.stats(organization));
 
 		return Gatherer.stats(organization);
@@ -373,6 +374,7 @@ class Prebook {
 				return false;
 			});
 	}
+
 
 	actionScheduleWarmupAll() {
 		return this.emitter.addTask('workstation', {
