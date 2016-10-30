@@ -414,12 +414,14 @@ class Prebook {
 	}) {
 		this.actionScheduleWarmupAll();
 		return this.actionWarmupAll({
-			organization
+			organization,
+			auto: true
 		});
 	}
 
 	actionWarmupAll({
-		organization
+		organization,
+		auto
 	}) {
 		global.logger && logger.info({
 			module: 'prebook',
@@ -430,7 +432,8 @@ class Prebook {
 			return this.actionWarmupDaysCache({
 					organization_data,
 					start: 0,
-					end: 32
+					end: 32,
+					auto: auto
 				})
 				.catch(err => true);
 		});
@@ -744,7 +747,7 @@ class Prebook {
 			.then((keyed) => {
 				let pre = keyed[0];
 				let success = pre.success;
-				count = _.round((pre.available.prebook || 0) / (pre.data.srv.prebook_operation_time * s_count));
+				count = _.round((pre.available.prebook || 0) / (pre.data.srv.prebook_operation_time));
 				org = pre.data;
 
 				exp_diff = org.d_date.clone()
@@ -791,8 +794,7 @@ class Prebook {
 				this.emitter.command("prebook.save.service.slots", {
 					data: {
 						preprocessed: org,
-						count,
-						s_count
+						count
 					},
 					reset: true
 				});
@@ -892,18 +894,19 @@ class Prebook {
 				time = process.hrtime();
 				if (res.late)
 					return Promise.reject(new Error("Dedicated date is in past."));
-				return this.actionGetStats(res);
-			})
-			.then((keyed) => {
-				// console.log("____________\nQUOTA", keyed);
-				let diff = process.hrtime(time);
-				console.log('PRE OBSERVE GOT STATS IN %d seconds', diff[0] + diff[1] / 1e9);
-				time = process.hrtime();
-				let pre = keyed[0];
-				let success = pre.success;
-				let count = _.round((pre.available.prebook || 0) / (pre.data.srv.prebook_operation_time * s_count));
-				org = pre.data;
-				console.log("OBSERVING PREBOOK II", count, pre.available, org.org_merged.prebook_observe_max_slots || count);
+				org = res;
+				// 	return this.actionGetStats(res);
+				// })
+				// .then((keyed) => {
+				// 	// console.log("____________\nQUOTA", keyed);
+				// 	let diff = process.hrtime(time);
+				// 	console.log('PRE OBSERVE GOT STATS IN %d seconds', diff[0] + diff[1] / 1e9);
+				// 	time = process.hrtime();
+				// 	let pre = keyed[0];
+				let success = true; //pre.success;
+				let count = org.org_merged.prebook_observe_max_slots || 1000 //_.round((pre.available.prebook || 0) / (pre.data.srv.prebook_operation_time * s_count));
+					// org = pre.data;
+					// console.log("OBSERVING PREBOOK II", count, pre.available, org.org_merged.prebook_observe_max_slots || count);
 				return !success ? [] : this.getServiceSlots({
 					preprocessed: org,
 					operator: operator,
@@ -1024,12 +1027,14 @@ class Prebook {
 		workstation,
 		organization_data,
 		start,
-		end
+		end,
+		auto = true
 	}) {
 		let time = process.hrtime();
 		let days;
 		let org;
 		let srv;
+		let days_quota;
 
 		return (organization_data ? Promise.resolve(organization_data) :
 				this.actionWorkstationOrganizationData({
@@ -1038,19 +1043,19 @@ class Prebook {
 				}))
 			.then((pre) => {
 				org = pre;
-				return this.services.serviceQuotaExpired(org.org_merged.id, this.warmup_throttle_hours * 3600000);
+				return auto ? true : this.services.serviceQuotaExpired(org.org_merged.id, this.warmup_throttle_hours * 3600000);
 			})
 			.then((res) => {
 				// console.log("RES Q C", res);
 				if (_.isBoolean(res) && !res)
 					return Promise.reject(new Error('success'));
-				return this.services.lockQuota(org.org_merged.id, this.service_quota_flag_expiry);
+				return this.services.lockQuota(org.org_merged.id, auto ? 0 : this.service_quota_flag_expiry);
 			})
 			.then((res) => {
 				// console.log("LOCKED");
 				if (!res)
 					return Promise.reject(new Error("Quota is locked."));
-				logger.error('WARMUP START');
+				logger.info('WARMUP START');
 
 				let mode = org.org_merged.workstation_resource_enabled ? 'destination' : 'operator';
 				org.agent_type = mode;
@@ -1092,6 +1097,7 @@ class Prebook {
 						agent_type: org.agent_type,
 						agent_keys: agent_keys,
 						d_date: dates.d_date,
+						d_date_key: dates.d_date.format("YYYY-MM-DD"),
 						b_date: dates.b_date,
 						td: dates.td,
 						today: dates.today
@@ -1110,7 +1116,7 @@ class Prebook {
 			.then((res) => {
 				let min = _.minBy(days, day => day.d_date.format('x'));
 
-				let days_quota = _.reduce(res, (acc, val) => {
+				days_quota = _.reduce(res, (acc, val) => {
 					return _.merge(acc, val);
 				}, {});
 				// console.log(require('util')
@@ -1150,6 +1156,9 @@ class Prebook {
 				console.log('AVDAYS CACHE WARMUP %d nanoseconds', diff[0] * 1e9 + diff[1]);
 				global.logger && logger.info('AVDAYS CACHE WARMUP %d nanoseconds', diff[0] * 1e9 + diff[1]);
 
+				return this._precomputeServiceSlots(days, days_quota);
+			})
+			.then((res) => {
 				return this.actionUpdateServiceQuota({
 					data: days_quota,
 					office: org.org_merged.id
@@ -1172,6 +1181,49 @@ class Prebook {
 				return Promise.reject(new Error("Warmup."));
 			});
 
+	}
+
+
+	_precomputeServiceSlots(days, quota) {
+		let srv_keys = Object.keys(quota),
+			cnt = 0;
+		// while (l--) {
+		// 	srv_q = quota[srv_keys[l]], days = Object.keys(srv_q), ll = days.length;
+		// 	while (ll--) {
+		// 		day_q = srv_q[days[ll]];
+		// 		promise = this.patchwerk.get('service', {
+		// 				key: srv_keys[l]
+		// 			})
+		// 			.then(service => {
+		// 				console.log(service.id);
+		// 				count = day_q.available.prebook / service.get("prebook_operation_time");
+		// 				return;
+		// 			});
+		// 		promises.push(promise);
+		// 	}
+		// }
+		return Promise.map(srv_keys, service => this.patchwerk.get('Service', {
+				key: service
+			}))
+			.then(services => {
+				return Promise.mapSeries(services, service => {
+					return Promise.mapSeries(days, day_data => {
+						let day_q = quota[service.id][day_data.d_date_key];
+						if (!day_q)
+							return false;
+						let count = _.round(day_q.available.prebook / service.get("prebook_operation_time")) + 1;
+						let preprocessed = _.cloneDeep(day_data);
+						preprocessed.srv = service.getSource();
+						preprocessed.service = service.id;
+						return this.iris.ticket_api.getServiceSlotsCache(preprocessed.org_merged.id, service.id, preprocessed.d_date_key)
+							.then(res => _.isEmpty(res) && this.cacheServiceSlots({
+								preprocessed: preprocessed,
+								count: count
+							}))
+							.then(res => console.log(cnt++));
+					})
+				})
+			});
 	}
 
 	actionUpdateServiceQuota({
@@ -1205,8 +1257,7 @@ class Prebook {
 				res = res || [];
 				return !_.isEmpty(res) && !preprocessed.today ? Promise.resolve(res) : this.computeServiceSlots({
 						preprocessed,
-						count: count * s_count,
-						s_count: 1
+						count: count
 					})
 					.then((computed) => {
 						// console.log("COMPUTED", computed);
@@ -1214,7 +1265,14 @@ class Prebook {
 						// 	.inspect(computed, {
 						// 		depth: null
 						// 	}));
-						return _.map(computed, (t) => _.pick(t, ['time_description', 'operator', 'destination', 'source'])) || [];
+						let ret = _.map(computed, (t) => _.pick(t, ['time_description', 'operator', 'destination', 'source'])) || [];
+						this.emitter.command("prebook.save.service.slots", {
+							office: preprocessed.org_merged.id,
+							service: preprocessed.service,
+							date: preprocessed.d_date.format("YYYY-MM-DD"),
+							data: ret
+						});
+						return ret;
 					});
 			})
 			.then((cache) => {
@@ -1228,12 +1286,6 @@ class Prebook {
 				time = process.hrtime();
 
 
-				this.emitter.command("prebook.save.service.slots", {
-					office: preprocessed.org_merged.id,
-					service: preprocessed.service,
-					date: preprocessed.d_date.format("YYYY-MM-DD"),
-					data: cache
-				});
 				let all_slots = _.sortBy(cache, 'time_description.0');
 				if (operator) {
 					all_slots = _.filter(all_slots, s => s.operator == operator);
@@ -1319,14 +1371,12 @@ class Prebook {
 
 	cacheServiceSlots({
 		preprocessed,
-		count,
-		s_count
+		count
 	}) {
 		let new_slots;
 		return this.computeServiceSlots({
 				preprocessed,
-				count: s_count * count,
-				s_count: 1
+				count: count
 			})
 			.then((res) => {
 				let expiry = moment(preprocessed.d_date)
@@ -1348,8 +1398,7 @@ class Prebook {
 
 	computeServiceSlots({
 		preprocessed,
-		count,
-		s_count
+		count
 	}) {
 		// console.log("PRE CMP SS", preprocessed);
 		return this.iris.observe({
@@ -1365,7 +1414,7 @@ class Prebook {
 				actor_type: preprocessed.agent_type,
 				organization: preprocessed.org_merged.id,
 				count: count,
-				service_count: s_count,
+				service_count: 1,
 				method: 'prebook'
 			})
 			.then(res => {
