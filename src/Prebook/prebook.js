@@ -1028,7 +1028,7 @@ class Prebook {
 		organization_data,
 		start,
 		end,
-		auto = true
+		auto = false
 	}) {
 		let time = process.hrtime();
 		let days;
