@@ -1196,8 +1196,6 @@ class Prebook {
 		let expiry = date.clone()
 			.add(1, 'day')
 			.unix();
-		if (date_key == "2016-12-02") console.log(office, service, expiry);
-
 		// console.log("SAVING", date_key, office, service);
 		return this.iris.ticket_api.cacheServiceSlots(office, service, date_key, data, {
 			expiry: expiry
