@@ -11,6 +11,8 @@ require('moment-range');
 let Gatherer = require('./stats.js');
 let Collector = require('./stat-datasource/data-processor.js');
 
+let SimplifiedMosaic = require("./simplified-mosaic.js");
+
 class Prebook {
 	constructor() {
 		this.emitter = message_bus;
@@ -27,6 +29,8 @@ class Prebook {
 
 		Collector.init(this.emitter);
 		Collector.setBuilder(this.iris.getCachingFactory.bind(this.iris));
+
+		SimplifiedMosaic.init(this.patchwerk, this._mosaicSaveSlots.bind(this));
 
 		this.prebook_check_interval = config.prebook_check_interval || 30;
 		this.warmup_throttle_hours = config.warmup_throttle_hours || 24;
@@ -1093,7 +1097,6 @@ class Prebook {
 						ws: org.ws,
 						org_addr: org.org_addr,
 						org_merged: org.org_merged,
-						org_chain: org.org_chain,
 						agent_type: org.agent_type,
 						agent_keys: agent_keys,
 						d_date: dates.d_date,
@@ -1156,7 +1159,7 @@ class Prebook {
 				console.log('AVDAYS CACHE WARMUP %d nanoseconds', diff[0] * 1e9 + diff[1]);
 				global.logger && logger.info('AVDAYS CACHE WARMUP %d nanoseconds', diff[0] * 1e9 + diff[1]);
 
-				return this._precomputeServiceSlots(days, days_quota);
+				return this._precomputeServiceSlots(days);
 			})
 			.then((res) => {
 				return this.actionUpdateServiceQuota({
@@ -1168,15 +1171,16 @@ class Prebook {
 				return this.services.unlockQuota(org.org_merged.id);
 			})
 			.catch(err => {
-				console.log("WARMUP FAILED", err.message);
+				console.log("WARMUP FAILED\n<------------------------------------------->\n\n\n", err.message);
 				if (err.message == 'success')
 					return Promise.resolve(true);
-				if (!err.message == 'Quota is locked.')
+				if (!err.message == 'Quota is locked.') {
 					global.logger && logger.error(
 						err, {
 							module: 'prebook',
 							method: 'warmup'
 						});
+				}
 
 				return Promise.reject(new Error("Warmup."));
 			});
@@ -1184,46 +1188,20 @@ class Prebook {
 	}
 
 
-	_precomputeServiceSlots(days, quota) {
-		let srv_keys = Object.keys(quota),
-			cnt = 0;
-		// while (l--) {
-		// 	srv_q = quota[srv_keys[l]], days = Object.keys(srv_q), ll = days.length;
-		// 	while (ll--) {
-		// 		day_q = srv_q[days[ll]];
-		// 		promise = this.patchwerk.get('service', {
-		// 				key: srv_keys[l]
-		// 			})
-		// 			.then(service => {
-		// 				console.log(service.id);
-		// 				count = day_q.available.prebook / service.get("prebook_operation_time");
-		// 				return;
-		// 			});
-		// 		promises.push(promise);
-		// 	}
-		// }
-		return Promise.map(srv_keys, service => this.patchwerk.get('Service', {
-				key: service
-			}))
-			.then(services => {
-				return Promise.mapSeries(services, service => {
-					return Promise.mapSeries(days, day_data => {
-						let day_q = quota[service.id][day_data.d_date_key];
-						if (!day_q)
-							return false;
-						let count = _.round(day_q.available.prebook / service.get("prebook_operation_time")) + 1;
-						let preprocessed = _.cloneDeep(day_data);
-						preprocessed.srv = service.getSource();
-						preprocessed.service = service.id;
-						return this.iris.ticket_api.getServiceSlotsCache(preprocessed.org_merged.id, service.id, preprocessed.d_date_key)
-							.then(res => _.isEmpty(res) && this.cacheServiceSlots({
-								preprocessed: preprocessed,
-								count: count
-							}))
-							.then(res => console.log(cnt++));
-					})
-				})
-			});
+	_precomputeServiceSlots(days) {
+		return SimplifiedMosaic.observeDays(days);
+	}
+
+	_mosaicSaveSlots(office, service, date, date_key, data) {
+		let expiry = date.clone()
+			.add(1, 'day')
+			.unix();
+		if (date_key == "2016-12-02") console.log(office, service, expiry);
+
+		// console.log("SAVING", date_key, office, service);
+		return this.iris.ticket_api.cacheServiceSlots(office, service, date_key, data, {
+			expiry: expiry
+		});
 	}
 
 	actionUpdateServiceQuota({
@@ -1368,6 +1346,7 @@ class Prebook {
 			expiry
 		});
 	}
+
 
 	cacheServiceSlots({
 		preprocessed,
