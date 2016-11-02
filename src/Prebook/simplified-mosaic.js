@@ -165,7 +165,7 @@ class Mosaic {
 							// 	}))
 							return Promise.mapSeries(service_ids, s_id => this.save(query.org_merged.id, s_id, day_data.d_date, day_data.d_date_key, res[s_id]));
 						})
-						.then(res => console.log(day_data.d_date_key))
+						// .then(res => console.log(day_data.d_date_key))
 					)
 					.then(res => {
 						let diff = process.hrtime(time);
