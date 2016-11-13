@@ -58,12 +58,17 @@ class Prebook {
 			});
 
 			this.emitter.on('ticket.emit.state', (data) => {
-				console.log("TICK EMIT STATE GATH");
+				// console.log("TICK EMIT STATE GATH");
 				if (data.event_name == 'register' || data.event_name == 'book' || data.event_name == 'closed' || data.event_name == 'processing') {
 					Gatherer.invalidate(data.ticket.org_destination);
 				}
 			});
-
+			this.emitter.on('workstation.emit.occupy', (data) => {
+				console.log("GATH INVALIDATE", data.workstation_data.attached_to);
+				if (data.workstation_data) {
+					Gatherer.invalidate(data.workstation_data.attached_to);
+				}
+			});
 			return this.actionScheduleWarmupAll()
 				.then(res => true);
 		}

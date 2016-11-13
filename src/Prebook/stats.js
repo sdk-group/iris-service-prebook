@@ -51,8 +51,10 @@ class Gatherer {
 		return this._locked && this._locked._global && this._locked._global.value || false || this._locked && this._locked[section] && this._locked[section].value || false;
 	}
 
-	invalidate(section) {
-		this._expiry[section] = 0;
+	invalidate(sections) {
+		_.map(_.castArray(sections), section => {
+			this._expiry[section] = 0;
+		});
 	}
 
 	expired(section) {
