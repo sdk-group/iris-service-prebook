@@ -324,17 +324,18 @@ class Prebook {
 	actionExpirationCheck({
 		ts_now
 	}) {
-		this.emitter.command('taskrunner.add.task', {
-			time: this.prebook_check_interval,
-			task_name: "",
-			module_name: "prebook",
-			task_type: "add-task",
-			solo: true,
-			// regular: true,
-			params: {
-				_action: "expiration-check"
-			}
-		});
+		// this.emitter.command('taskrunner.add.task', {
+		// 	time: this.prebook_check_interval,
+		// 	task_name: "",
+		// 	module_name: "prebook",
+		// 	task_type: "add-task",
+		// 	solo: true,
+		// 	// regular: true,
+		// 	params: {
+		// 		_action: "expiration-check"
+		// 	}
+		// });
+		console.log("EXP CHECK");
 		return this.emitter.addTask('workstation', {
 				_action: 'organization-timezones'
 			})
