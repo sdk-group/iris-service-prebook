@@ -63,17 +63,10 @@ class Prebook {
 					Gatherer.invalidate(data.ticket.org_destination);
 				}
 			});
-			this.emitter.on('workstation.emit.occupy', (data) => {
-				// console.log("GATH INVALIDATE", data.workstation_data.attached_to);
+			this.emitter.on('workstation.emit.change-state', (data) => {
+				console.log("GATH INVALIDATE", data);
 				if (data.organization) {
-					Gatherer.invalidate(organization);
-				}
-			});
-
-			this.emitter.on('workstation.emit.leave', (data) => {
-				// console.log("GATH INVALIDATE", data.workstation_data.attached_to);
-				if (data.organization) {
-					Gatherer.invalidate(organization);
+					Gatherer.invalidate(data.organization);
 				}
 			});
 			return this.actionScheduleWarmupAll()
