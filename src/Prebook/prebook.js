@@ -64,9 +64,16 @@ class Prebook {
 				}
 			});
 			this.emitter.on('workstation.emit.occupy', (data) => {
-				console.log("GATH INVALIDATE", data.workstation_data.attached_to);
-				if (data.workstation_data) {
-					Gatherer.invalidate(data.workstation_data.attached_to);
+				// console.log("GATH INVALIDATE", data.workstation_data.attached_to);
+				if (data.organization) {
+					Gatherer.invalidate(organization);
+				}
+			});
+
+			this.emitter.on('workstation.emit.leave', (data) => {
+				// console.log("GATH INVALIDATE", data.workstation_data.attached_to);
+				if (data.organization) {
+					Gatherer.invalidate(organization);
 				}
 			});
 			return this.actionScheduleWarmupAll()
