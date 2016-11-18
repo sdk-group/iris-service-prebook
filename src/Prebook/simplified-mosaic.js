@@ -170,6 +170,7 @@ class Mosaic {
 					.then(res => {
 						let diff = process.hrtime(time);
 						console.log('MOSAIC SLOTS IN %d seconds', diff[0] + diff[1] / 1e9);
+						global.logger && logger.info('MOSAIC SLOTS IN %d seconds', diff[0] + diff[1] / 1e9);
 					});
 			})
 
