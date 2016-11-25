@@ -125,27 +125,30 @@ class Mosaic {
 								line = schedules[line_idx];
 								if (!line) continue;
 								line = line.has_time_description.slice();
-								line_sz = line.length / 2 | 0;
 								if (ticks_by_agent[active[la]]) {
 									_.map(ticks_by_agent[active[la]], t => {
 										insertTick(line, t.get("time_description"));
 									});
 								}
+								// console.log("befo", line);
 								_.map(ticks_by_agent.rest, t => {
 									if (!t.placed) {
 										t.placed = insertTick(line, t.get("time_description"));
 									}
 								});
-								_.map(services, service => {
+								line_sz = line.length;
+								// console.log("plc", line, ticks_by_agent.rest.length, line_sz);
+								_.forEach(services, service => {
 									optime = service.get("prebook_operation_time");
 									res[service.parent.id] = res[service.parent.id] || [];
 									for (var i = 0; i < line_sz; i = i + 2) {
 										gap = line[i + 1] - line[i];
-										// console.log(service);
 										slots_cnt = (gap / optime) | 0;
-										curr = line[0];
-										for (var i = 0; i < slots_cnt; i++) {
+										curr = line[i];
+										// console.log(service.parent.id, i, gap, line[i + 1], line[i], line_sz);
+										for (var j = 0; j < slots_cnt; j++) {
 											nxt = curr + optime;
+											// console.log(service.parent.id, j, curr, nxt);
 											res[service.parent.id].push({
 												time_description: [curr, nxt],
 												operator: is_d_mode ? null : agents[la].id,
