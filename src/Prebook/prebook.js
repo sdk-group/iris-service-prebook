@@ -840,6 +840,7 @@ class Prebook {
 
 			})
 			.catch((err) => {
+				this.emitter.command("prebook.recount.service.slots", org);
 				console.log("PB CONFIRM ERR!", err.stack);
 				global.logger && logger.error(
 					err, {
@@ -895,6 +896,7 @@ class Prebook {
 				offset: true
 			})
 			.then((res) => {
+				console.log("OBSERVE WS", workstation);
 				let diff = process.hrtime(time);
 				console.log('PRE OBSERVE PREPARED IN %d seconds', diff[0] + diff[1] / 1e9);
 				time = process.hrtime();
@@ -984,24 +986,19 @@ class Prebook {
 					// console.log("OBSERVING PREBOOK II", val.solid, val.success, s_count, pre.srv.prebook_operation_time, (val.solid.prebook >= pre.srv.prebook_operation_time * s_count), pre.d_date.format("YYYY-MM-DD"));
 					let local_key = pre.d_date.format();
 					let success = val.success && val.max_solid.prebook && (val.max_solid.prebook >= pre.srv.prebook_operation_time * s_count);
-					// let count = _.round((val.available.prebook || 0) / (pre.srv.prebook_operation_time * s_count));
-					// acc[local_key] = !operator && success ? success : this.getServiceSlots({
-					// 		preprocessed: pre,
-					// 		operator,
-					// 		count,
-					// 		s_count
-					// 	})
-					// 	.then(res => !!_.size(res));
-					acc[local_key] = success;
+					let cond = pre.today || this._getOrComputeServiceSlots(pre, 1)
+						.then(res => !!_.size(res));
+					acc[local_key] = success && cond;
+					// acc[local_key] = success;
 					return acc;
 				}, {});
 				return Promise.props(promises);
 			})
 			.then((res) => {
-				// console.log("RES", require('util')
-				// 	.inspect(res, {
-				// 		depth: null
-				// 	}));
+				console.log("RES", require('util')
+					.inspect(res, {
+						depth: null
+					}));
 				let diff = process.hrtime(time);
 				console.log('AVDAYS DONE IN  %d nanoseconds', diff[0] * 1e9 + diff[1]);
 				return {
@@ -1216,6 +1213,18 @@ class Prebook {
 		});
 	}
 
+	_getOrComputeServiceSlots(preprocessed, count) {
+		return this.iris.ticket_api.getServiceSlotsCache(preprocessed.org_merged.id, preprocessed.service, preprocessed.d_date_key)
+			.then((res) => {
+				res = res || [];
+				return !_.isEmpty(res) && !preprocessed.today ? Promise.resolve(res) : this.computeServiceSlots({
+						preprocessed,
+						count: count
+					})
+					.then((computed) => _.map(computed, (t) => _.pick(t, ['time_description', 'operator', 'destination', 'source'])) || []);
+			});
+	}
+
 	getServiceSlots({
 		preprocessed,
 		operator,
@@ -1223,37 +1232,7 @@ class Prebook {
 		s_count
 	}) {
 		let time = process.hrtime();
-		return this.iris.ticket_api.getServiceSlotsCache(preprocessed.org_merged.id, preprocessed.service, preprocessed.d_date_key)
-			.then((res) => {
-				// console.log("SLOTS CACHE", require('util')
-				// 	.inspect(res, {
-				// 		depth: null
-				// 	}));
-				let diff = process.hrtime(time);
-				console.log('GET SERVICE SLOTS CACHE IN %d seconds', diff[0] + diff[1] / 1e9);
-				time = process.hrtime();
-
-				res = res || [];
-				return !_.isEmpty(res) && !preprocessed.today ? Promise.resolve(res) : this.computeServiceSlots({
-						preprocessed,
-						count: count
-					})
-					.then((computed) => {
-						// console.log("COMPUTED", computed);
-						// console.log("SLOTS CACHE CMP", require('util')
-						// 	.inspect(computed, {
-						// 		depth: null
-						// 	}));
-						let ret = _.map(computed, (t) => _.pick(t, ['time_description', 'operator', 'destination', 'source'])) || [];
-						// this.emitter.command("prebook.save.service.slots", {
-						// 	office: preprocessed.org_merged.id,
-						// 	service: preprocessed.service,
-						// 	date: preprocessed.d_date.format("YYYY-MM-DD"),
-						// 	data: ret
-						// });
-						return ret;
-					});
-			})
+		return this._getOrComputeServiceSlots(preprocessed, count)
 			.then((cache) => {
 				// console.log("SLOTS CACHE", require('util')
 				// 	.inspect(cache, {
@@ -1476,6 +1455,7 @@ class Prebook {
 				// 	}));
 				let days_missing = _.filter(days, (pre) => {
 					// return true;
+					// console.log(pre);
 					return !_.has(quota, `${srv}.${pre.d_date_key}`) || pre.today && !!_.parseInt(days[0].srv.prebook_today_percentage);
 				});
 				return _.isEmpty(days_missing) ? quota : Promise.mapSeries(days_missing, (pre) => {
