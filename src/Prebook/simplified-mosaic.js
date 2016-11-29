@@ -103,7 +103,7 @@ class Mosaic {
 						amap[agents[la].id].push(scmap[sch[l]]);
 					}
 				}
-				// console.log("###############################################################\n", amap);
+				console.log("###############################################################\n", amap);
 
 				return Promise.mapSeries(days, day_data => this.patchwerk.get('Ticket', {
 							date: day_data.d_date_key,
@@ -125,19 +125,21 @@ class Mosaic {
 								line = schedules[line_idx];
 								if (!line) continue;
 								line = line.has_time_description.slice();
-								if (ticks_by_agent[active[la]]) {
+								if (!!ticks_by_agent[active[la]]) {
 									_.map(ticks_by_agent[active[la]], t => {
 										insertTick(line, t.get("time_description"));
 									});
 								}
 								// console.log("befo", line);
-								_.map(ticks_by_agent.rest, t => {
-									if (!t.placed) {
-										t.placed = insertTick(line, t.get("time_description"));
-									}
-								});
+								if (!!ticks_by_agent.rest) {
+									_.map(ticks_by_agent.rest, t => {
+										if (!t.placed) {
+											t.placed = insertTick(line, t.get("time_description"));
+										}
+									});
+								}
 								line_sz = line.length;
-								// console.log("plc", line, ticks_by_agent.rest.length, line_sz);
+								console.log("plc", line, line_sz);
 								_.forEach(services, service => {
 									optime = service.get("prebook_operation_time");
 									res[service.parent.id] = res[service.parent.id] || [];
@@ -166,7 +168,7 @@ class Mosaic {
 							// 	.inspect(res, {
 							// 		depth: null
 							// 	}))
-							return Promise.mapSeries(service_ids, s_id => this.save(query.org_merged.id, s_id, day_data.d_date, day_data.d_date_key, res[s_id]));
+							return Promise.mapSeries(service_ids, s_id => !!res[s_id] && this.save(query.org_merged.id, s_id, day_data.d_date, day_data.d_date_key, res[s_id]));
 						})
 						// .then(res => console.log(day_data.d_date_key))
 					)

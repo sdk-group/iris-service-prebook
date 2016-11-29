@@ -13,6 +13,8 @@ let Collector = require('./stat-datasource/data-processor.js');
 
 let SimplifiedMosaic = require("./simplified-mosaic.js");
 
+var RESTRICTED_DAYS;
+
 class Prebook {
 	constructor() {
 		this.emitter = message_bus;
@@ -57,6 +59,10 @@ class Prebook {
 				return this.actionFillGatherer({});
 			});
 
+			this.emitter.on('engine.ready', () => {
+				return this._temporalLoadDayRestriction();
+			});
+
 			this.emitter.on('ticket.emit.state', (data) => {
 				// console.log("TICK EMIT STATE GATH");
 				if (data.event_name == 'register' || data.event_name == 'book' || data.event_name == 'closed' || data.event_name == 'processing') {
@@ -73,6 +79,20 @@ class Prebook {
 				.then(res => true);
 		}
 		//API
+
+	_temporalLoadDayRestriction() {
+		console.log("##################################\n###################################\n##############################");
+		return this.services.getGlobal("restricted_days")
+			.then(days_by_org => {
+				RESTRICTED_DAYS = days_by_org;
+				return true;
+			});
+	}
+
+	_temporalCheckRestrictedDay(org, day) {
+		let rs = RESTRICTED_DAYS[org] || RESTRICTED_DAYS.default || [];
+		return !~rs.indexOf(day);
+	}
 
 	actionFillGatherer({
 		organization: organization = []
@@ -690,10 +710,14 @@ class Prebook {
 	}
 
 	actionTicketConfirm(data) {
-		console.log(data);
+		// console.log(data);
 		let fnames = ['service', 'operator', 'destination', 'code', 'force', 'token',
 						'org_destination', 'booking_method', 'time_description', 'label',
-						'dedicated_date', 'service_count', 'priority', 'user_info',
+						'dedicated_date',
+						'service_count',
+						'priority',
+						'user_info',
+						'user_info_description',
 						'workstation', 'user_id', 'user_type', '_action', 'request_id'];
 		let user_info = data.user_info || _.omit(data, fnames);
 		let force = !!data.force;
@@ -707,7 +731,8 @@ class Prebook {
 			priority: data.priority,
 			code: data.code,
 			label: data.label,
-			user_info: user_info
+			user_info: user_info,
+			user_info_description: data.user_info_description
 		};
 
 		let org;
@@ -983,9 +1008,9 @@ class Prebook {
 				time = process.hrtime();
 				let promises = _.reduce(days, (acc, val, key) => {
 					let pre = val.data;
-					// console.log("OBSERVING PREBOOK II", val.solid, val.success, s_count, pre.srv.prebook_operation_time, (val.solid.prebook >= pre.srv.prebook_operation_time * s_count), pre.d_date.format("YYYY-MM-DD"));
 					let local_key = pre.d_date.format();
-					let success = val.success && val.max_solid.prebook && (val.max_solid.prebook >= pre.srv.prebook_operation_time * s_count);
+					let success = val.success && val.max_solid.prebook && (val.max_solid.prebook >= pre.srv.prebook_operation_time * s_count, val);
+					console.log("OBSERVING PREBOOK II", success, val.success, val.max_solid.prebook, (val.max_solid.prebook >= pre.srv.prebook_operation_time * s_count));
 					let cond = pre.today || this._getOrComputeServiceSlots(pre, 1)
 						.then(res => !!_.size(res));
 					acc[local_key] = success && cond;
@@ -1117,7 +1142,6 @@ class Prebook {
 			})
 			.then((res) => {
 				let min = _.minBy(days, day => day.d_date.format('x'));
-
 				days_quota = _.reduce(res, (acc, val) => {
 					return _.merge(acc, val);
 				}, {});
@@ -1127,6 +1151,8 @@ class Prebook {
 				// 	}));
 				days_quota = _.mapValues(days_quota, (srv_q, srv_id) => {
 					return _.pickBy(_.mapValues(srv_q, (date_q, date) => {
+						if (!this._temporalCheckRestrictedDay(org.org_merged.id, date))
+							date_q = {};
 						return _.defaultsDeep(date_q, {
 							max_available: {
 								live: 0,
@@ -1173,7 +1199,7 @@ class Prebook {
 				console.log("WARMUP FAILED\n<------------------------------------------->\n\n\n", err.message);
 				if (err.message == 'success')
 					return Promise.resolve(true);
-				if (!err.message == 'Quota is locked.') {
+				if (err.message !== 'Quota is locked.') {
 					console.log(err.stack);
 					global.logger && logger.error(
 						err, {
@@ -1449,10 +1475,10 @@ class Prebook {
 				let diff = process.hrtime(time);
 				console.log('PRE GET QUOTA IN %d seconds', diff[0] + diff[1] / 1e9);
 				time = process.hrtime();
-				// console.log("QUOTA", require('util')
-				// 	.inspect(quota, {
-				// 		depth: null
-				// 	}));
+				console.log("QUOTA", require('util')
+					.inspect(quota, {
+						depth: null
+					}));
 				let days_missing = _.filter(days, (pre) => {
 					// return true;
 					// console.log(pre);
@@ -1465,10 +1491,10 @@ class Prebook {
 						let diff = process.hrtime(time);
 						console.log('PRE PRECOMPUTE QUOTA IN %d seconds', diff[0] + diff[1] / 1e9);
 						time = process.hrtime();
-						// console.log("MISSING", require('util')
-						// 	.inspect(md, {
-						// 		depth: null
-						// 	}));
+						console.log("MISSING", require('util')
+							.inspect(md, {
+								depth: null
+							}));
 						return _.reduce(md, (acc, res, index) => {
 							let pre = days_missing[index];
 							let q = _.get(res, `${srv}.${pre.d_date_key}`, {});
@@ -1483,10 +1509,10 @@ class Prebook {
 				console.log('PRE COMPUTE QUOTA IN %d seconds', diff[0] + diff[1] / 1e9);
 				time = process.hrtime();
 
-				// console.log("QUOTA", require('util')
-				// 	.inspect(days_quota, {
-				// 		depth: null
-				// 	}));
+				console.log("QUOTA", require('util')
+					.inspect(days_quota, {
+						depth: null
+					}));
 				let preserve = [];
 				let result = _.map(days, (pre) => {
 					let part = (pre.today ? pre.srv.prebook_today_percentage : pre.srv.prebook_percentage);
