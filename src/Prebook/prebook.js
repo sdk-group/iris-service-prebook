@@ -241,7 +241,8 @@ class Prebook {
 					actor_type: org.agent_type,
 					organization: org.org_merged.id,
 					method: 'live',
-					quota_status: true
+					quota_status: true,
+					today: true
 				});
 			})
 			.then((res) => {
@@ -255,7 +256,8 @@ class Prebook {
 					actor_type: org.agent_type,
 					organization: org.org_merged.id,
 					method: 'prebook',
-					quota_status: true
+					quota_status: true,
+					today: true
 				});
 			})
 			.then((res) => {
@@ -678,7 +680,8 @@ class Prebook {
 				dedicated_date: org.d_date,
 				tickets: tickets,
 				method: 'prebook',
-				nocheck: !!force
+				nocheck: !!force,
+				today: org.today
 			})
 			.then(res => {
 				if (!_.isEmpty(res.lost) && (res.placed.length != tickets.length))
@@ -710,7 +713,7 @@ class Prebook {
 	}
 
 	actionTicketConfirm(data) {
-		// console.log(data);
+		console.log(data);
 		let fnames = ['service', 'operator', 'destination', 'code', 'force', 'token',
 						'org_destination', 'booking_method', 'time_description', 'label',
 						'dedicated_date',
@@ -1401,7 +1404,8 @@ class Prebook {
 				organization: preprocessed.org_merged.id,
 				count: count,
 				service_count: 1,
-				method: 'prebook'
+				method: 'prebook',
+				today: preprocessed.today
 			})
 			.then(res => {
 				return _.filter(res, t => !!t.source);
@@ -1453,7 +1457,8 @@ class Prebook {
 				actor_type: preprocessed.agent_type,
 				organization: preprocessed.org_merged.id,
 				method: 'prebook',
-				quota_status: true
+				quota_status: true,
+				today: preprocessed.today
 					// });
 			})
 			.then((res) => {
