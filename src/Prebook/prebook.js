@@ -70,7 +70,7 @@ class Prebook {
 				}
 			});
 			this.emitter.on('workstation.emit.change-state', (data) => {
-				console.log("GATH INVALIDATE", data);
+				// console.log("GATH INVALIDATE", data);
 				if (data.organization) {
 					Gatherer.invalidate(data.organization);
 				}
@@ -81,7 +81,6 @@ class Prebook {
 		//API
 
 	_temporalLoadDayRestriction() {
-		console.log("##################################\n###################################\n##############################");
 		return this.services.getGlobal("restricted_days")
 			.then(days_by_org => {
 				RESTRICTED_DAYS = days_by_org;
@@ -215,8 +214,8 @@ class Prebook {
 				});
 				let lchunks = lsch ? _.flatMap(lsch.has_time_description, 'data.0') : [86400];
 				let pchunks = psch ? _.flatMap(psch.has_time_description, 'data.0') : [86400];
-				let ltd = [now, _.max(lchunks)];
-				let ptd = [now + org.org_merged.prebook_observe_offset, _.max(pchunks)];
+				let ltd = [now, _.max(lchunks) || 86400];
+				let ptd = [now + org.org_merged.prebook_observe_offset, _.max(pchunks) || 86400];
 
 				return {
 					org_addr: org.org_addr,
@@ -681,7 +680,8 @@ class Prebook {
 				tickets: tickets,
 				method: 'prebook',
 				nocheck: !!force,
-				today: org.today
+				today: org.today,
+				no_service_check: true
 			})
 			.then(res => {
 				if (!_.isEmpty(res.lost) && (res.placed.length != tickets.length))
@@ -912,9 +912,10 @@ class Prebook {
 		destination,
 		service_count = [1]
 	}) {
+		console.log("DEDICATED OBSERVE", dedicated_date);
 		let org;
 		let s_count = _.castArray(service_count);
-		s_count = _.parseInt(s_count[0]) || 1;
+		s_count = Math.abs(_.parseInt(s_count[0])) || 1;
 		let services = _.castArray(service);
 		let time = process.hrtime();
 		return this.preparePrebookProcessing({
@@ -924,25 +925,26 @@ class Prebook {
 				offset: true
 			})
 			.then((res) => {
-				console.log("OBSERVE WS", workstation);
+				// console.log("OBSERVE WS", workstation);
 				let diff = process.hrtime(time);
 				console.log('PRE OBSERVE PREPARED IN %d seconds', diff[0] + diff[1] / 1e9);
 				time = process.hrtime();
 				if (res.late)
 					return Promise.reject(new Error("Dedicated date is in past."));
 				org = res;
-				// 	return this.actionGetStats(res);
-				// })
-				// .then((keyed) => {
-				// 	// console.log("____________\nQUOTA", keyed);
-				// 	let diff = process.hrtime(time);
-				// 	console.log('PRE OBSERVE GOT STATS IN %d seconds', diff[0] + diff[1] / 1e9);
-				// 	time = process.hrtime();
-				// 	let pre = keyed[0];
-				let success = true; //pre.success;
-				let count = org.org_merged.prebook_observe_max_slots || 1000 //_.round((pre.available.prebook || 0) / (pre.data.srv.prebook_operation_time * s_count));
-					// org = pre.data;
-					// console.log("OBSERVING PREBOOK II", count, pre.available, org.org_merged.prebook_observe_max_slots || count);
+				return this.actionGetStats(res);
+			})
+			.then((keyed) => {
+				// console.log("____________\nQUOTA", keyed);
+				let diff = process.hrtime(time);
+				console.log('PRE OBSERVE GOT STATS IN %d seconds', diff[0] + diff[1] / 1e9);
+				time = process.hrtime();
+				let pre = keyed[0];
+				let success = pre.success;
+				// let count = org.org_merged.prebook_observe_max_slots || 1000
+				let count = _.round((pre.available.prebook || 0) / (pre.data.srv.prebook_operation_time * s_count));
+				// org = pre.data;
+				// console.log("OBSERVING PREBOOK II", count, pre.available, org.org_merged.prebook_observe_max_slots || count);
 				return !success ? [] : this.getServiceSlots({
 					preprocessed: org,
 					operator: operator,
@@ -1013,7 +1015,7 @@ class Prebook {
 					let pre = val.data;
 					let local_key = pre.d_date.format();
 					let success = val.success && val.max_solid.prebook && (val.max_solid.prebook >= pre.srv.prebook_operation_time * s_count, val);
-					console.log("OBSERVING PREBOOK II", success, val.success, val.max_solid.prebook, (val.max_solid.prebook >= pre.srv.prebook_operation_time * s_count));
+					// console.log("OBSERVING PREBOOK II", success, val.success, val.max_solid.prebook, (val.max_solid.prebook >= pre.srv.prebook_operation_time * s_count));
 					let cond = pre.today || this._getOrComputeServiceSlots(pre, 1)
 						.then(res => !!_.size(res));
 					acc[local_key] = success && cond;
@@ -1480,10 +1482,10 @@ class Prebook {
 				let diff = process.hrtime(time);
 				console.log('PRE GET QUOTA IN %d seconds', diff[0] + diff[1] / 1e9);
 				time = process.hrtime();
-				console.log("QUOTA", require('util')
-					.inspect(quota, {
-						depth: null
-					}));
+				// console.log("QUOTA", require('util')
+				// 	.inspect(quota, {
+				// 		depth: null
+				// 	}));
 				let days_missing = _.filter(days, (pre) => {
 					// return true;
 					// console.log(pre);
@@ -1496,10 +1498,10 @@ class Prebook {
 						let diff = process.hrtime(time);
 						console.log('PRE PRECOMPUTE QUOTA IN %d seconds', diff[0] + diff[1] / 1e9);
 						time = process.hrtime();
-						console.log("MISSING", require('util')
-							.inspect(md, {
-								depth: null
-							}));
+						// console.log("MISSING", require('util')
+						// 	.inspect(md, {
+						// 		depth: null
+						// 	}));
 						return _.reduce(md, (acc, res, index) => {
 							let pre = days_missing[index];
 							let q = _.get(res, `${srv}.${pre.d_date_key}`, {});
@@ -1514,10 +1516,10 @@ class Prebook {
 				console.log('PRE COMPUTE QUOTA IN %d seconds', diff[0] + diff[1] / 1e9);
 				time = process.hrtime();
 
-				console.log("QUOTA", require('util')
-					.inspect(days_quota, {
-						depth: null
-					}));
+				// console.log("QUOTA", require('util')
+				// 	.inspect(days_quota, {
+				// 		depth: null
+				// 	}));
 				let preserve = [];
 				let result = _.map(days, (pre) => {
 					let part = (pre.today ? pre.srv.prebook_today_percentage : pre.srv.prebook_percentage);
