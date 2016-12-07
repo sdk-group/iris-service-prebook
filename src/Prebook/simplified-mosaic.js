@@ -28,6 +28,10 @@ function insertTick(plan, tick) {
 	return success;
 }
 
+function debounce(fn, time) {
+
+}
+
 class Mosaic {
 	// methods
 	init(patchwerk, save_cb) {
@@ -140,7 +144,11 @@ class Mosaic {
 								}
 								line_sz = line.length;
 								console.log("plc", line, line_sz);
-								_.forEach(services, service => {
+
+								let sl = services.length,
+									service;
+								for (var ii = 0; ii < sl; ii++) {
+									service = services[ii];
 									optime = service.get("prebook_operation_time");
 									res[service.parent.id] = res[service.parent.id] || [];
 									for (var i = 0; i < line_sz; i = i + 2) {
@@ -160,7 +168,7 @@ class Mosaic {
 											curr = nxt;
 										}
 									}
-								})
+								}
 
 								// console.log(active[la], line);
 							}
@@ -168,7 +176,11 @@ class Mosaic {
 							// 	.inspect(res, {
 							// 		depth: null
 							// 	}))
-							return Promise.mapSeries(service_ids, s_id => !!res[s_id] && this.save(query.org_merged.id, s_id, day_data.d_date, day_data.d_date_key, res[s_id]));
+
+							console.log("SAVING MOSAIC");
+							return Promise.map(service_ids, s_id => !!res[s_id] && this.save(query.org_merged.id, s_id, day_data.d_date, day_data.d_date_key, res[s_id]), {
+								concurrency: 50
+							});
 						})
 						// .then(res => console.log(day_data.d_date_key))
 					)

@@ -64,8 +64,8 @@ class Prebook {
 			});
 
 			this.emitter.on('ticket.emit.state', (data) => {
-				// console.log("TICK EMIT STATE GATH");
-				if (data.event_name == 'register' || data.event_name == 'book' || data.event_name == 'closed' || data.event_name == 'processing') {
+				if (data.event_name == 'register' || (data.event_name == 'book' && data.today) || data.event_name == 'closed' || data.event_name == 'processing') {
+					console.log("TICK EMIT STATE GATH");
 					Gatherer.invalidate(data.ticket.org_destination);
 				}
 			});
@@ -712,6 +712,13 @@ class Prebook {
 			});
 	}
 
+	_validateConfirmArguments(data) {
+		let res = true;
+		if (!data.time_description || data.time_description.constructor !== Array)
+			res = false;
+		return res ? Promise.resolve(res) : Promise.reject(new Error("Invalid input data."));
+	}
+
 	actionTicketConfirm(data) {
 		console.log(data);
 		let fnames = ['service', 'operator', 'destination', 'code', 'force', 'token',
@@ -722,6 +729,7 @@ class Prebook {
 						'user_info',
 						'user_info_description',
 						'workstation', 'user_id', 'user_type', '_action', 'request_id'];
+
 		let user_info = data.user_info || _.omit(data, fnames);
 		let force = !!data.force;
 		let source_info = {
@@ -747,12 +755,15 @@ class Prebook {
 		let exp_diff;
 
 		let time = process.hrtime();
-		return this.preparePrebookProcessing({
-				workstation: data.workstation,
-				organization: data.org_destination,
-				service: source_info.service[0],
-				dedicated_date: data.dedicated_date,
-				offset: false
+		return this._validateConfirmArguments(data)
+			.then(approval => {
+				return this.preparePrebookProcessing({
+					workstation: data.workstation,
+					organization: data.org_destination,
+					service: source_info.service[0],
+					dedicated_date: data.dedicated_date,
+					offset: false
+				});
 			})
 			.then((pre) => {
 				org = pre;
@@ -785,6 +796,7 @@ class Prebook {
 				return this.actionGetStats(org);
 			})
 			.then((keyed) => {
+				console.log(keyed);
 				let pre = keyed[0];
 				let success = pre.success;
 				count = _.round((pre.available.prebook || 0) / (pre.data.srv.prebook_operation_time));
@@ -839,6 +851,7 @@ class Prebook {
 					this.emitter.emit('ticket.emit.state', {
 						org_addr: org.org_addr,
 						org_merged: org.org_merged,
+						today: org.today,
 						ticket: tick,
 						event_name: event_name,
 						workstation: data.workstation
@@ -868,7 +881,7 @@ class Prebook {
 
 			})
 			.catch((err) => {
-				this.emitter.command("prebook.recount.service.slots", org);
+				org && this.emitter.command("prebook.recount.service.slots", org);
 				console.log("PB CONFIRM ERR!", err.stack);
 				global.logger && logger.error(
 					err, {
@@ -912,7 +925,7 @@ class Prebook {
 		destination,
 		service_count = [1]
 	}) {
-		console.log("DEDICATED OBSERVE", dedicated_date);
+		// console.log("DEDICATED OBSERVE", dedicated_date);
 		let org;
 		let s_count = _.castArray(service_count);
 		s_count = Math.abs(_.parseInt(s_count[0])) || 1;
