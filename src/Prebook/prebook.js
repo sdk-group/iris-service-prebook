@@ -1,17 +1,20 @@
 'use strict'
 
-let BookingApi = require('resource-management-framework')
+const BookingApi = require('resource-management-framework')
 	.BookingApi;
-let ServiceApi = require('resource-management-framework')
+const ServiceApi = require('resource-management-framework')
 	.ServiceApi;
-let Patchwerk = require('patchwerk');
-let moment = require('moment-timezone');
+const Patchwerk = require('patchwerk');
+const moment = require('moment-timezone');
 require('moment-range');
 
-let Gatherer = require('./stats.js');
-let Collector = require('./stat-datasource/data-processor.js');
+const Gatherer = require('./stats.js');
+const Collector = require('./stat-datasource/data-processor.js');
 
-let SimplifiedMosaic = require("./simplified-mosaic.js");
+const SimplifiedMosaic = require("./simplified-mosaic.js");
+
+const UIValidation = require("./user-info-validation.js");
+var UIValidator;
 
 var RESTRICTED_DAYS;
 
@@ -25,7 +28,10 @@ class Prebook {
 		this.iris.initContent();
 		this.services = new ServiceApi();
 		this.services.initContent();
+
 		this.patchwerk = Patchwerk(message_bus);
+
+		UIValidator = UIValidation(this.emitter);
 
 		Gatherer.setTransforms(['live-slots-count', 'prebook-slots-count']);
 
@@ -712,11 +718,20 @@ class Prebook {
 			});
 	}
 
+
 	_validateConfirmArguments(data) {
+		//synchronous
 		let res = true;
 		if (!data.time_description || data.time_description.constructor !== Array)
 			res = false;
-		return res ? Promise.resolve(res) : Promise.reject(new Error("Invalid input data."));
+
+		if (!res)
+			return Promise.reject(new Error("Invalid input data."));
+		return UIValidator.validate(data);
+	}
+
+	_updateValidationInfo(data) {
+		return UIValidator.update(data);
 	}
 
 	actionTicketConfirm(data) {
@@ -735,6 +750,8 @@ class Prebook {
 		let source_info = {
 			time_description: data.time_description,
 			service: _.take(_.castArray(data.service), 1),
+			booking_method: "prebook",
+			state: "booked",
 			operator: data.operator,
 			destination: data.destination,
 			dedicated_date: data.dedicated_date,
@@ -755,7 +772,7 @@ class Prebook {
 		let exp_diff;
 
 		let time = process.hrtime();
-		return this._validateConfirmArguments(data)
+		return this._validateConfirmArguments(source_info)
 			.then(approval => {
 				return this.preparePrebookProcessing({
 					workstation: data.workstation,
@@ -815,8 +832,6 @@ class Prebook {
 			.then((expiry) => {
 
 				source_info.dedicated_date = org.d_date.format('YYYY-MM-DD');
-				source_info.booking_method = 'prebook';
-				source_info.state = 'booked';
 				source_info.expiry = expiry;
 
 				return this.emitter.addTask('ticket-index', {
@@ -872,6 +887,9 @@ class Prebook {
 					});
 
 				});
+				return this._updateValidationInfo(source_info);
+			})
+			.then((res) => {
 
 				return {
 					success: true,
