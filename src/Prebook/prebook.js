@@ -13,7 +13,7 @@ const Collector = require('./stat-datasource/data-processor.js');
 
 const SimplifiedMosaic = require("./simplified-mosaic.js");
 
-const UIValidation = require("./user-info-validation.js");
+const UIValidation = require("iris-user-info-validation");
 var UIValidator;
 
 var RESTRICTED_DAYS;
