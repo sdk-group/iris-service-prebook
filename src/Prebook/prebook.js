@@ -755,7 +755,7 @@ class Prebook {
 			operator: data.operator,
 			destination: data.destination,
 			dedicated_date: data.dedicated_date,
-			service_count: _.castArray(data.service_count),
+			service_count: _.map(_.castArray(data.service_count), sc => Math.abs(parseInt(sc))),
 			priority: data.priority,
 			code: data.code,
 			label: data.label,
@@ -768,7 +768,7 @@ class Prebook {
 		let tickets;
 		let context = {};
 		let count = 1;
-		let s_count = _.parseInt(source_info.service_count[0]) || 1;
+		let s_count = source_info.service_count[0] || 1;
 		let exp_diff;
 
 		let time = process.hrtime();
@@ -813,7 +813,7 @@ class Prebook {
 				return this.actionGetStats(org);
 			})
 			.then((keyed) => {
-				console.log(keyed);
+				// console.log(keyed);
 				let pre = keyed[0];
 				let success = pre.success;
 				count = _.round((pre.available.prebook || 0) / (pre.data.srv.prebook_operation_time));
