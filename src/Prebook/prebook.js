@@ -674,20 +674,63 @@ class Prebook {
 			});
 	}
 
+	_checkSlots(org, tickets) {
+		return this.actionGetStats(org)
+			.then((keyed) => {
+				let pre = keyed[0];
+				let s_count = tickets[0].service_count;
+				let success = pre.success;
+				// let count = org.org_merged.prebook_observe_max_slots || 1000
+				let count = _.round((pre.available.prebook || 0) / (pre.data.srv.prebook_operation_time * s_count));
+				// org = pre.data;
+				// console.log("OBSERVING PREBOOK II", count, pre.available, org.org_merged.prebook_observe_max_slots || count);
+				return !success ? [] : this._getOrComputeServiceSlots(org, count);
+			})
+			.then((cache) => {
+				let all_slots = cache,
+					l = all_slots.length,
+					placed = {},
+					slot, ticket, ll = tickets.length;
+				for (var i = 0; i < ll; i++) {
+					ticket = tickets[i];
+					for (var j = 0; j < l; j++) {
+						slot = all_slots[j];
+						if (slot.placed)
+							continue;
+						if (slot.time_description[0] == ticket.time_description[0] &&
+							slot.time_description[1] == ticket.time_description[1] &&
+							(!ticket.operator || slot.operator == ticket.operator) &&
+							(!slot.service || slot.service == ticket.service)) {
+							slot.placed = true;
+							placed[i] = true;
+						}
+					}
+				}
+				// console.log("##############################################################\n", tickets, all_slots, placed);
+				placed = Object.keys(placed);
+				return Promise.resolve(placed.length == tickets.length);
+			});
+	}
+
 	_confirm(force, org, tickets) {
-		return this.iris.confirm({
-				actor_type: org.agent_type,
-				actor: '*',
-				service_keys: this.services.getSystemName('registry', 'service', [org.org_merged.id]),
-				organization: org.org_merged.id,
-				actor_keys: org.agent_keys.all,
-				time_description: org.td,
-				dedicated_date: org.d_date,
-				tickets: tickets,
-				method: 'prebook',
-				nocheck: !!force,
-				today: org.today,
-				no_service_check: true
+		let manualObserve = force ? Promise.resolve(true) : this._checkSlots(org, tickets);
+		return manualObserve.then(approval => {
+				if (!approval)
+					return Promise.reject(new Error('Failed to place a ticket.'));
+				return this.iris.confirm({
+					actor_type: org.agent_type,
+					actor: '*',
+					service_keys: this.services.getSystemName('registry', 'service', [org.org_merged.id]),
+					organization: org.org_merged.id,
+					actor_keys: org.agent_keys.all,
+					time_description: org.td,
+					dedicated_date: org.d_date,
+					tickets: tickets,
+					method: 'prebook',
+					// nocheck: !!force,
+					nocheck: true,
+					today: org.today
+				});
 			})
 			.then(res => {
 				if (!_.isEmpty(res.lost) && (res.placed.length != tickets.length))
@@ -854,15 +897,15 @@ class Prebook {
 				tickets = confirmed.response;
 
 
-				this.emitter.command("prebook.save.service.quota", {
-					data: org,
-					reset: true
-				});
+				// this.emitter.command("prebook.save.service.quota", {
+				// 	data: org,
+				// 	reset: true
+				// });
 				this.emitter.command("prebook.recount.service.slots", org);
 				// console.log("CONFIRMING", res);
 
 				_.map(tickets, tick => {
-					console.log("TICKET CNF", tick);
+					// console.log("TICKET CNF", tick);
 					this.emitter.emit('ticket.emit.state', {
 						org_addr: org.org_addr,
 						org_merged: org.org_merged,
@@ -1376,8 +1419,12 @@ class Prebook {
 
 	actionRecountServiceSlots(data) {
 		let days = _.castArray(data);
+		return this.actionUpdateServiceQuota({
+				data: data,
+				reset: true
+			})
+			.then(res => this._precomputeServiceSlots(days));
 		// console.log("AAAAAAAAAAAAAAAAAAAAAAAA", data);
-		return this._precomputeServiceSlots(days);
 	}
 
 

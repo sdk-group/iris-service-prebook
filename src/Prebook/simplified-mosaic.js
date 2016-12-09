@@ -28,6 +28,17 @@ function insertTick(plan, tick) {
 	return success;
 }
 
+function provides(provision, service) {
+	if (!provision)
+		return false;
+	if (provision == '*')
+		return true;
+	if (provision.constructor === String)
+		return provision == service;
+	if (provision.constructor === Array)
+		return !!~provision.indexOf(service);
+}
+
 function debounce(fn, time) {
 
 }
@@ -59,7 +70,6 @@ class Mosaic {
 			.then(res => {
 				agents = res;
 				// console.log("###############################################################\n", "AGENTS/SERVICES");
-
 				let sch_obj = {},
 					l = agents.length,
 					ll;
@@ -87,7 +97,8 @@ class Mosaic {
 				let amap = {},
 					srv = {},
 					scmap = {},
-					sch, l;
+					pmap = {},
+					sch, l, prov;
 				while (lsc--) {
 					scmap[schedules[lsc].id] = lsc;
 					// console.log("before", schedules[lsc]);
@@ -106,6 +117,9 @@ class Mosaic {
 					while (l--) {
 						amap[agents[la].id].push(scmap[sch[l]]);
 					}
+
+					prov = agents[la].get("provides");
+					pmap[agents[la].id] = prov;
 				}
 				console.log("###############################################################\n", amap);
 
@@ -137,7 +151,7 @@ class Mosaic {
 								// console.log("befo", line);
 								if (!!ticks_by_agent.rest) {
 									_.map(ticks_by_agent.rest, t => {
-										if (!t.placed) {
+										if (!t.placed && provides(pmap[active[la]], t.get("service"))) {
 											t.placed = insertTick(line, t.get("time_description"));
 										}
 									});
@@ -151,6 +165,9 @@ class Mosaic {
 									service = services[ii];
 									optime = service.get("prebook_operation_time");
 									res[service.parent.id] = res[service.parent.id] || [];
+									// console.log("provides", active[la], service.parent.id, provides(pmap[active[la]], service.parent.id));
+									if (!provides(pmap[active[la]], service.parent.id))
+										continue;
 									for (var i = 0; i < line_sz; i = i + 2) {
 										gap = line[i + 1] - line[i];
 										slots_cnt = (gap / optime) | 0;
