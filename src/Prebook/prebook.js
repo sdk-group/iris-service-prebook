@@ -713,7 +713,7 @@ class Prebook {
 	}
 
 	_confirm(force, org, tickets) {
-		let manualObserve = force ? Promise.resolve(true) : this._checkSlots(org, tickets);
+		let manualObserve = org.today ? Promise.resolve(true) : (force ? Promise.resolve(true) : this._checkSlots(org, tickets));
 		return manualObserve.then(approval => {
 				if (!approval)
 					return Promise.reject(new Error('Failed to place a ticket.'));
@@ -728,7 +728,7 @@ class Prebook {
 					tickets: tickets,
 					method: 'prebook',
 					// nocheck: !!force,
-					nocheck: true,
+					nocheck: org.today ? !!force : true,
 					today: org.today
 				});
 			})
