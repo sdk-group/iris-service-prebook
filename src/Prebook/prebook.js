@@ -687,26 +687,28 @@ class Prebook {
 				return !success ? [] : this._getOrComputeServiceSlots(org, count);
 			})
 			.then((cache) => {
-				let all_slots = cache,
-					l = all_slots.length,
-					placed = {},
+				let placed = {},
 					slot, ticket, ll = tickets.length;
 				for (var i = 0; i < ll; i++) {
 					ticket = tickets[i];
+					let all_slots = this._constructSolidSlots(cache, ticket.service_count),
+						l = all_slots.length;
 					for (var j = 0; j < l; j++) {
 						slot = all_slots[j];
-						if (slot.placed)
+						if (_.some(slot.from, s => s.placed))
 							continue;
 						if (slot.time_description[0] == ticket.time_description[0] &&
 							slot.time_description[1] == ticket.time_description[1] &&
 							(!ticket.operator || slot.operator == ticket.operator) &&
 							(!slot.service || slot.service == ticket.service)) {
-							slot.placed = true;
+							_.map(slot.from, single_slot => {
+								single_slot.placed = true
+							});
 							placed[i] = true;
 						}
 					}
 				}
-				// console.log("##############################################################\n", tickets, all_slots, placed);
+				console.log("##############################################################\n", tickets, _.filter(cache, 'placed'), placed);
 				placed = Object.keys(placed);
 				return Promise.resolve(placed.length == tickets.length);
 			});
@@ -1330,9 +1332,58 @@ class Prebook {
 			});
 	}
 
+	_constructSolidSlots(slots, s_count, operator, destination) {
+		let all_slots = _.sortBy(slots, 'time_description.0');
+		if (operator) {
+			all_slots = _.filter(all_slots, s => s.operator == operator);
+		}
+		if (destination) {
+			all_slots = _.filter(all_slots, s => s.destination == destination);
+		}
+		// console.log("SLOTS CACHE", require('util')
+		// 	.inspect(all_slots, {
+		// 		depth: null
+		// 	}));
+
+		let solid_slots = [];
+		let curr = [];
+		let all = _.round(_.size(all_slots) / s_count) + 1;
+		// console.log("ALL SLOTS", all_slots, all);
+
+		for (var i = 0; i < all; i++) {
+			if (_.size(all_slots) < s_count)
+				break;
+			curr = [_.head(all_slots)];
+			all_slots = _.tail(all_slots);
+			// console.log("SZ ALL", _.size(all_slots), curr);
+			for (var j = 0; j < s_count - 1; j++) {
+				let last = _.last(curr);
+				let next = _.findIndex(all_slots, t => (t.time_description[0] == last.time_description[1] && t.source == last.source));
+				// console.log("NXT", last, next, !!~next, j, curr, _.size(curr));
+				if (!!~next)
+					curr = _.concat(curr, _.pullAt(all_slots, next));
+				else
+					break;
+			}
+			// console.log("AAAAAA", _.size(curr), s_count);
+			if (_.size(curr) == s_count) {
+				// console.log("PUSHING");
+				solid_slots.push({
+					time_description: [_.head(curr)
+							.time_description[0],
+							_.last(curr)
+							.time_description[1]],
+					from: curr
+				});
+			}
+		}
+		return solid_slots;
+	}
+
 	getServiceSlots({
 		preprocessed,
 		operator,
+		destination,
 		count,
 		s_count
 	}) {
@@ -1349,52 +1400,10 @@ class Prebook {
 				time = process.hrtime();
 
 
-				let all_slots = _.sortBy(cache, 'time_description.0');
-				if (operator) {
-					all_slots = _.filter(all_slots, s => s.operator == operator);
-				}
-				// console.log("SLOTS CACHE", require('util')
-				// 	.inspect(all_slots, {
-				// 		depth: null
-				// 	}));
-
-				let solid_slots = [];
-				let curr = [];
-				let all = _.round(_.size(all_slots) / s_count) + 1;
-				// console.log("ALL SLOTS", all_slots, all);
-
-				for (var i = 0; i < all; i++) {
-					if (_.size(all_slots) < s_count)
-						break;
-					curr = [_.head(all_slots)];
-					all_slots = _.tail(all_slots);
-					// console.log("SZ ALL", _.size(all_slots), curr);
-					for (var j = 0; j < s_count - 1; j++) {
-						let last = _.last(curr);
-						let next = _.findIndex(all_slots, t => (t.time_description[0] == last.time_description[1] && t.source == last.source));
-						// console.log("NXT", last, next, !!~next, j, curr, _.size(curr));
-						if (!!~next)
-							curr = _.concat(curr, _.pullAt(all_slots, next));
-						else
-							break;
-					}
-					// console.log("AAAAAA", _.size(curr), s_count);
-					if (_.size(curr) == s_count) {
-						// console.log("PUSHING");
-						solid_slots.push({
-							time_description: [_.head(curr)
-							.time_description[0],
-							_.last(curr)
-							.time_description[1]]
-						});
-					}
-				}
-
-
 				diff = process.hrtime(time);
 				console.log('COMPOSED SLOTS IN %d seconds', diff[0] + diff[1] / 1e9);
 				time = process.hrtime();
-
+				let solid_slots = this._constructSolidSlots(cache, s_count, operator, destination);
 
 				// console.log("SOLID SLOTS", solid_slots);
 				let uniq_interval = preprocessed.org_merged.prebook_slot_uniq_interval || 60;

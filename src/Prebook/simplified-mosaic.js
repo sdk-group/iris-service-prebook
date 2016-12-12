@@ -33,14 +33,18 @@ function provides(provision, service) {
 		return false;
 	if (provision == '*')
 		return true;
-	if (provision.constructor === String)
+	if (provision.constructor == String)
 		return provision == service;
-	if (provision.constructor === Array)
+	if (provision.constructor == Array)
 		return !!~provision.indexOf(service);
 }
 
 function debounce(fn, time) {
 
+}
+
+function _planName(agent, organization, d_date_key) {
+	return `${agent}-${organization}-plan--${d_date_key}`;
 }
 
 class Mosaic {
@@ -112,7 +116,7 @@ class Mosaic {
 					if (!sch)
 						continue;
 					amap[agents[la].id] = [];
-					sch = (sch.constructor === Array ? sch : [sch]);
+					sch = (sch.constructor == Array ? sch : [sch]);
 					l = sch.length;
 					while (l--) {
 						amap[agents[la].id].push(scmap[sch[l]]);
@@ -180,7 +184,7 @@ class Mosaic {
 												time_description: [curr, nxt],
 												operator: is_d_mode ? null : agents[la].id,
 												destination: is_d_mode ? agents[la].id : null,
-												source: true
+												source: _planName(agents[la].id, query.org_merged.id, day_data.d_date_key)
 											});
 											curr = nxt;
 										}
