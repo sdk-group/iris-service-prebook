@@ -817,7 +817,7 @@ class Prebook {
 		let exp_diff;
 
 		let time = process.hrtime();
-		return this._validateConfirmArguments(source_info)
+		return (force ? Promise.resolve(true) : this._validateConfirmArguments(source_info))
 			.then(approval => {
 				return this.preparePrebookProcessing({
 					workstation: data.workstation,
