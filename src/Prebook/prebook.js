@@ -1090,12 +1090,20 @@ class Prebook {
 				let promises = _.reduce(days, (acc, val, key) => {
 					let pre = val.data;
 					let local_key = pre.d_date.format();
-					let success = val.success && val.max_solid.prebook && (val.max_solid.prebook >= pre.srv.prebook_operation_time * s_count, val);
+					let success = val.success && val.max_solid.prebook && (val.max_solid.prebook >= pre.srv.prebook_operation_time * s_count);
 					// console.log("OBSERVING PREBOOK II", success, val.success, val.max_solid.prebook, (val.max_solid.prebook >= pre.srv.prebook_operation_time * s_count));
-					let cond = pre.today || this._getOrComputeServiceSlots(pre, 1)
-						.then(res => !!_.size(res));
-					acc[local_key] = success && cond;
-					// acc[local_key] = success;
+					if (!success) {
+						acc[local_key] = success;
+					} else {
+						acc[local_key] = pre.today || this.getServiceSlots({
+								preprocessed: pre,
+								operator: operator,
+								destination: destination,
+								count: 1,
+								s_count: s_count
+							})
+							.then(res => !!_.size(res));
+					}
 					return acc;
 				}, {});
 				return Promise.props(promises);
