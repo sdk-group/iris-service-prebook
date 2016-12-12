@@ -140,7 +140,7 @@ class Mosaic {
 								la = active.length,
 								line, line_idx, line_sz, gap, optime, curr, nxt, ts, slots_cnt,
 								day = day_data.d_date.format('dddd');
-							let ticks_by_agent = _.groupBy(tickets, t => (t.get(query.agent_type) || 'rest'));
+							let ticks_by_agent = _.groupBy(_.filter(tickets, t => (t.get("state") == 'booked' || t.get("state") == 'registered')), t => (t.get(query.agent_type) || 'rest'));
 							while (la--) {
 								//certain line
 								line_idx = _.find(amap[active[la]], s => !!~_.indexOf(schedules[s].has_day, day));
