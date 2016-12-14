@@ -453,7 +453,8 @@ class Prebook {
 		let sch = _.find(_.castArray(schedules), (piece) => {
 			return !!~_.indexOf(piece.has_day, dedicated.format('dddd'));
 		});
-		let chunks = sch ? _.flatMap(sch.has_time_description, 'data.0') : [86400];
+		let chunks = sch ? _.flatMap(_.castArray(sch.has_time_description), 'data.0') : [86400];
+		// console.log("CHUNKS", chunks, sch.has_time_description);
 		let today = booking.isSame(dedicated, 'day');
 		let late = !today && dedicated.isBefore(moment.tz(tz), 'day');
 		let start = today ? now + offset : _.min(chunks);
@@ -618,7 +619,7 @@ class Prebook {
 				let s_count = tickets[0].service_count;
 				let success = pre.success;
 				// let count = org.org_merged.prebook_observe_max_slots || 1000
-				let count = _.round((pre.available.prebook || 0) / (pre.data.srv.prebook_operation_time * s_count));
+				let count = _.round((pre.available.prebook || 0) / (pre.data.srv.prebook_operation_time));
 				// org = pre.data;
 				// console.log("OBSERVING PREBOOK II", count, pre.available, org.org_merged.prebook_observe_max_slots || count);
 				return !success ? [] : this._getOrComputeServiceSlots(org, count);
@@ -888,11 +889,12 @@ class Prebook {
 				});
 			})
 			.then((res) => {
-				this.emitter.command("prebook.recount.service.slots", org);
+				if (!org.today)
+					this.emitter.command("prebook.recount.service.slots", org);
 				return res;
 			})
 			.catch((err) => {
-				org && this.emitter.command("prebook.recount.service.slots", org);
+				org && !org.today && this.emitter.command("prebook.recount.service.slots", org);
 				console.log("PB CONFIRM ERR!", err.stack);
 				global.logger && logger.error(
 					err, {
@@ -939,7 +941,7 @@ class Prebook {
 		// console.log("DEDICATED OBSERVE", dedicated_date);
 		let org;
 		let s_count = _.castArray(service_count);
-		s_count = Math.abs(_.parseInt(s_count[0])) || 1;
+		s_count = Math.abs(parseInt(s_count[0])) || 1;
 		let services = _.castArray(service);
 		let time = process.hrtime();
 		return this.preparePrebookProcessing({
@@ -1280,7 +1282,7 @@ class Prebook {
 		return this.iris.ticket_api.getServiceSlotsCache(preprocessed.org_merged.id, preprocessed.service, preprocessed.d_date_key)
 			.then((res) => {
 				res = res || [];
-				return !_.isEmpty(res) && !preprocessed.today ? Promise.resolve(res) : this.computeServiceSlots({
+				return !preprocessed.today ? Promise.resolve(res) : this.computeServiceSlots({
 						preprocessed,
 						count: count
 					})
@@ -1344,7 +1346,7 @@ class Prebook {
 		s_count
 	}) {
 		let time = process.hrtime();
-		return this._getOrComputeServiceSlots(preprocessed, count)
+		return this._getOrComputeServiceSlots(preprocessed, count * s_count)
 			.then((cache) => {
 				// console.log("SLOTS CACHE", require('util')
 				// 	.inspect(cache, {
@@ -1439,7 +1441,8 @@ class Prebook {
 				actor: '*',
 				services: [{
 					service: preprocessed.service,
-					time_description: preprocessed.srv.prebook_operation_time
+					time_description: preprocessed.srv.prebook_operation_time,
+					service_count: 1
 				}],
 				time_description: preprocessed.td,
 				dedicated_date: preprocessed.d_date,
@@ -1448,7 +1451,6 @@ class Prebook {
 				actor_type: preprocessed.agent_type,
 				organization: preprocessed.org_merged.id,
 				count: count,
-				service_count: 1,
 				method: 'prebook',
 				today: preprocessed.today
 			})
@@ -1476,23 +1478,6 @@ class Prebook {
 	computeServiceQuota(preprocessed) {
 		let quota = {};
 		let time = process.hrtime();
-		// return  this.iris.confirm({
-		// 		actor: '*',
-		// 		time_description: preprocessed.td,
-		// 		dedicated_date: preprocessed.d_date,
-		// 		service_keys: this.services.getSystemName('registry', 'service', [preprocessed.org_merged.id]),
-		// 		actor_keys: preprocessed.agent_keys.all,
-		// 		actor_type: preprocessed.agent_type,
-		// 		organization: preprocessed.org_merged.id,
-		// 		method: 'live',
-		// 		quota_status: true
-		// 	})
-		// .then((res) => {
-		// let diff = process.hrtime(time);
-		// console.log('PRE COMPUTE QUOTA LIVE IN %d seconds', diff[0] + diff[1] / 1e9);
-		// time = process.hrtime();
-
-		// quota = res.stats;
 		return this.iris.confirm({
 				actor: '*',
 				time_description: preprocessed.td,
@@ -1504,7 +1489,6 @@ class Prebook {
 				method: 'prebook',
 				quota_status: true,
 				today: preprocessed.today
-					// });
 			})
 			.then((res) => {
 				let diff = process.hrtime(time);
