@@ -348,77 +348,12 @@ class Prebook {
 	}
 
 
-	actionExpirationCheck({
-		ts_now
-	}) {
-		// this.emitter.command('taskrunner.add.task', {
-		// 	time: this.prebook_check_interval,
-		// 	task_name: "",
-		// 	module_name: "prebook",
-		// 	task_type: "add-task",
-		// 	solo: true,
-		// 	// regular: true,
-		// 	params: {
-		// 		_action: "expiration-check"
-		// 	}
-		// });
-		console.log("EXP CHECK");
-		return this.emitter.addTask('workstation', {
-				_action: 'organization-timezones'
-			})
-			.then(res => {
-				let todays = _(res)
-					.values()
-					.uniq()
-					.reduce((acc, t) => {
-						acc[t] = moment.tz(t)
-							.format("YYYY-MM-DD");
-						return acc;
-					}, {});
-				return Promise.mapSeries(_.keys(res), (org_destination) => {
-					return this.getTickets({
-						query: {
-							dedicated_date: todays[res[org_destination]],
-							org_destination,
-							state: ['booked']
-						}
-					});
-				});
-			})
-			.then((ticks) => {
-				let tickets = _(ticks)
-					.flatten()
-					.filter(t => (t.expiry < ts_now))
-					.value();
-				// console.log("TICKS TO EXPIRE", tickets, ts_now, ticks);
-				return Promise.map(tickets, (ticket) => {
-					console.log("EXP", ticket.id, ticket.org_destination);
-					return this.emitter.addTask("queue", {
-						_action: "ticket-expire",
-						ticket: ticket.id,
-						organization: ticket.org_destination,
-						auto: true
-					});
-				});
-			})
-			.catch((err) => {
-				global.logger && logger.error(
-					err, {
-						module: 'prebook',
-						method: 'expiration-check'
-					});
-				console.log("EXPIRATION CHECK ERR", err.stack);
-				return false;
-			});
-	}
-
-
 	actionScheduleWarmupAll() {
 		return this.emitter.addTask('workstation', {
-				_action: 'organization-data',
-				embed_schedules: true
+				_action: 'organization-data'
 			})
 			.then((res) => {
+				// console.log(res);
 				let to_warmup = _.filter(res, org => !_.isUndefined(org.org_merged.auto_warmup_time) && !_.isEmpty(org.org_merged.has_schedule));
 				let times = {};
 				_.map(to_warmup, (org) => {
@@ -449,11 +384,13 @@ class Prebook {
 	actionAutoWarmupAll({
 		organization
 	}) {
-		this.actionScheduleWarmupAll();
-		return this.actionWarmupAll({
-			organization,
-			auto: true
-		});
+		return this.actionScheduleWarmupAll()
+			.then(res =>
+				this.actionWarmupAll({
+					organization,
+					auto: true
+				})
+			);
 	}
 
 	actionWarmupAll({
@@ -903,7 +840,6 @@ class Prebook {
 				// 	data: org,
 				// 	reset: true
 				// });
-				this.emitter.command("prebook.recount.service.slots", org);
 				// console.log("CONFIRMING", res);
 
 				_.map(tickets, tick => {
@@ -936,12 +872,24 @@ class Prebook {
 			})
 			.then((res) => {
 
-				return {
-					success: true,
-					ticket: tickets,
-					context: context
-				};
+				if (!org.ws.prebook_autoregister) {
+					return {
+						success: true,
+						ticket: tickets,
+						context: context
+					};
+				}
+				let tick = tickets[0];
 
+				return this.emitter.addTask('queue', {
+					_action: 'ticket-register',
+					ticket: tick.id,
+					workstation: data.workstation
+				});
+			})
+			.then((res) => {
+				this.emitter.command("prebook.recount.service.slots", org);
+				return res;
 			})
 			.catch((err) => {
 				org && this.emitter.command("prebook.recount.service.slots", org);
