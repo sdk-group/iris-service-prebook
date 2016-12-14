@@ -1043,7 +1043,7 @@ class Prebook {
 					if (!success) {
 						acc[local_key] = success;
 					} else {
-						acc[local_key] = this.getServiceSlots({
+						acc[local_key] = pre.today || this.getServiceSlots({
 								preprocessed: pre,
 								operator: operator,
 								destination: destination,
