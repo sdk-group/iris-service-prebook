@@ -194,11 +194,13 @@ class Prebook {
 				agent_keys: (mode == 'destination' ? this.emitter.addTask('workstation', {
 					_action: 'resource-keys',
 					organization: org.org_merged.id,
-					device_type: 'control-panel'
+					device_type: 'control-panel',
+					state: !!org.org_merged.ignore_agent_state ? '*' : ['active']
 				}) : this.emitter.addTask('agent', {
 					_action: 'resource-keys',
 					role: 'Operator',
-					organization: org.org_merged.id
+					organization: org.org_merged.id,
+					state: !!org.org_merged.ignore_agent_state ? '*' : ['active']
 				})),
 				srv: this.services.getServiceIds(org.org_merged.id)
 			})
@@ -488,11 +490,13 @@ class Prebook {
 					agent_keys: mode == 'destination' ? this.emitter.addTask('workstation', {
 						_action: 'resource-keys',
 						organization: org.org_merged.id,
-						device_type: 'control-panel'
+						device_type: 'control-panel',
+						state: !!org.org_merged.ignore_agent_state ? '*' : ['active']
 					}) : this.emitter.addTask('agent', {
 						_action: 'resource-keys',
 						role: 'Operator',
-						organization: org.org_merged.id
+						organization: org.org_merged.id,
+						state: !!org.org_merged.ignore_agent_state ? '*' : ['active']
 					}),
 					srv: this.patchwerk.get('Service', {
 						department: org.org_merged.id,
@@ -571,11 +575,13 @@ class Prebook {
 					agent_keys: mode == 'destination' ? this.emitter.addTask('workstation', {
 						_action: 'resource-keys',
 						organization: org.org_merged.id,
-						device_type: 'control-panel'
+						device_type: 'control-panel',
+						state: !!org.org_merged.ignore_agent_state ? '*' : ['active']
 					}) : this.emitter.addTask('agent', {
 						_action: 'resource-keys',
 						role: 'Operator',
-						organization: org.org_merged.id
+						organization: org.org_merged.id,
+						state: !!org.org_merged.ignore_agent_state ? '*' : ['active']
 					}),
 					srv: this.patchwerk.get('Service', {
 						department: org.org_merged.id,
@@ -1129,11 +1135,13 @@ class Prebook {
 				return mode == 'destination' ? this.emitter.addTask('workstation', {
 					_action: 'resource-keys',
 					organization: org.org_merged.id,
-					device_type: 'control-panel'
+					device_type: 'control-panel',
+					state: !!org.org_merged.ignore_agent_state ? '*' : ['active']
 				}) : this.emitter.addTask('agent', {
 					_action: 'resource-keys',
 					role: 'Operator',
-					organization: org.org_merged.id
+					organization: org.org_merged.id,
+					state: !!org.org_merged.ignore_agent_state ? '*' : ['active']
 				});
 			})
 			.then((agent_keys) => {
@@ -1325,7 +1333,7 @@ class Prebook {
 			}
 			// console.log("AAAAAA", _.size(curr), s_count);
 			if (_.size(curr) == s_count) {
-				// console.log("PUSHING");
+				// console.log("PUSHING", curr);
 				solid_slots.push({
 					time_description: [_.head(curr)
 							.time_description[0],
@@ -1363,7 +1371,7 @@ class Prebook {
 				time = process.hrtime();
 				let solid_slots = this._constructSolidSlots(cache, s_count, operator, destination);
 
-				// console.log("SOLID SLOTS", solid_slots);
+				// console.log("SOLID SLOTS", solid_slots, uniq_interval);
 				let uniq_interval = preprocessed.org_merged.prebook_slot_uniq_interval || 60;
 				let threshold = 0;
 				let slots = _.filter(solid_slots, (tick) => {
@@ -1570,7 +1578,7 @@ class Prebook {
 						}
 					});
 					let success = !!(stats.max_available.prebook * part) && ((stats.max_available.prebook * part) >= (stats.reserved));
-					// console.log("STATS", part, stats, `${org}.${srv}.${date}`, !!(stats.max_available.live * part) && (stats.max_available.live * part >= (stats.reserved)), stats.max_available.live * part, (stats.reserved));
+					// console.log("STATS", part, stats, `${org}.${srv}.${date}`, stats.max_available.prebook, stats.max_available.prebook * part, stats.reserved);
 					return {
 						success,
 						available: stats.available,
