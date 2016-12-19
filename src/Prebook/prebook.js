@@ -879,7 +879,7 @@ class Prebook {
 			})
 			.then((res) => {
 
-				if (!org.ws.prebook_autoregister) {
+				if (!!org.ws && !org.ws.prebook_autoregister) {
 					return {
 						success: true,
 						ticket: tickets,
