@@ -879,20 +879,21 @@ class Prebook {
 			})
 			.then((res) => {
 
-				if (!!org.ws && !org.ws.prebook_autoregister) {
-					return {
-						success: true,
-						ticket: tickets,
-						context: context
-					};
-				}
-				let tick = tickets[0];
+				if (!!org.ws && !!org.ws.prebook_autoregister) {
+					let tick = tickets[0];
 
-				return this.emitter.addTask('queue', {
-					_action: 'ticket-register',
-					ticket: tick.id,
-					workstation: data.workstation
-				});
+					return this.emitter.addTask('queue', {
+						_action: 'ticket-register',
+						ticket: tick.id,
+						workstation: data.workstation
+					});
+				}
+				return {
+					success: true,
+					ticket: tickets,
+					context: context
+				};
+
 			})
 			.then((res) => {
 				if (!org.today)
