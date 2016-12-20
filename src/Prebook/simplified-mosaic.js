@@ -108,7 +108,7 @@ class Mosaic {
 					// console.log("before", schedules[lsc]);
 					schedules[lsc] = schedules[lsc].getSource();
 					// console.log("after", schedules[lsc]);
-					schedules[lsc].has_time_description = schedules[lsc].has_time_description.data[0];
+					schedules[lsc].has_time_description = _.flatMap(_.castArray(schedules[lsc].has_time_description), 'data.0');
 				}
 				while (la--) {
 					sch = agents[la].get("has_schedule");
