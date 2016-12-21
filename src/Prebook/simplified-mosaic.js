@@ -1,9 +1,16 @@
 'use strict';
 
-function insertTick(plan, tick) {
+function _isArray(val) {
+	return val && (val.constructor == Array);
+}
+
+function insertTick(plan, tick_td, sc = 1) {
 	let l = plan.length,
-		success = false;
+		success = false,
+		tick;
 	for (var i = 1; i < l; i = i + 2) {
+		tick = _isArray(tick_td) ? tick_td : [plan[i - 1], plan[i - 1] + parseInt(tick_td) * parseInt(sc)];
+		// console.log("TTICK TD", tick_td, tick);
 		if (plan[i] > tick[1] && plan[i - 1] < tick[0]) {
 			plan.splice(i, 0, tick[0], tick[1]);
 			success = true;
@@ -26,6 +33,70 @@ function insertTick(plan, tick) {
 		}
 	}
 	return success;
+}
+
+function intersect(c1, c2) {
+	let plead = 0;
+	let ploose = 0;
+
+	let leader = c1[0] < c2[0] ? c1 : c2;
+	let looser = c1[0] >= c2[0] ? c1 : c2;
+
+	let result = [];
+	let last = _.min([c1[c1.length - 1], c2[c2.length - 1]]);
+	let next = true;
+
+	while (next) {
+		let s1 = leader[plead * 2];
+		let e1 = leader[plead * 2 + 1];
+		let s2 = looser[ploose * 2];
+		let e2 = looser[ploose * 2 + 1];
+
+		if (e1 >= last && e2 >= last) next = false;
+
+		if (s2 < e1) {
+			result.push(s2);
+		} else {
+			plead++;
+			s1 = leader[plead * 2];
+
+			if (s1 >= s2) {
+				let sw = looser;
+				looser = leader;
+				leader = sw;
+
+				let swp = ploose;
+				ploose = plead;
+				plead = swp;
+			}
+			continue;
+		}
+
+
+		if (e2 > e1) {
+			result.push(e1);
+			let sw = looser;
+			looser = leader;
+			leader = sw;
+
+			let swp = ploose;
+			ploose = plead;
+			plead = swp;
+			ploose++;
+			continue;
+		}
+
+		if (e2 <= e1) {
+			result.push(e2);
+
+			ploose++;
+
+			continue;
+		}
+
+	}
+
+	return result;
 }
 
 function provides(provision, service) {
