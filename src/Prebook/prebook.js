@@ -883,10 +883,15 @@ class Prebook {
 					let tick = tickets[0];
 
 					return this.emitter.addTask('queue', {
-						_action: 'ticket-register',
-						ticket: tick.id,
-						workstation: data.workstation
-					});
+							_action: 'ticket-register',
+							ticket: tick.id,
+							workstation: data.workstation
+						})
+						.then(res => ({
+							success: res.success,
+							ticket: _.castArray(res.ticket),
+							context: res.context
+						}));
 				}
 				return {
 					success: true,
