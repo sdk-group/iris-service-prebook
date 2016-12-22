@@ -156,26 +156,6 @@ class Mosaic {
 						if (!sch_obj[sc[ll]])
 							sch_obj[sc[ll]] = true;
 					}
-
-					sc = agents[l].get("has_schedule");
-					sc = _.castArray(sc && sc.resource || []);
-					ll = sc.length;
-					while (ll--) {
-						if (!sch_obj[sc[ll]])
-							sch_obj[sc[ll]] = true;
-					}
-				}
-
-				//@NOTE collecting schedule keys from services
-				l = services.length;
-				while (l--) {
-					let sc = services[l].get("has_schedule");
-					sc = sc && sc.prebook || [];
-					ll = sc.length;
-					while (ll--) {
-						if (!sch_obj[sc[ll]])
-							sch_obj[sc[ll]] = true;
-					}
 				}
 				// console.log("###############################################################\n", sch_obj);
 				let sch_keys = Object.keys(sch_obj);
@@ -194,7 +174,6 @@ class Mosaic {
 					scmap = {},
 					pmap = {},
 					sch, l, prov;
-				//@NOTE mapping schedules for easier access
 				while (lsc--) {
 					scmap[schedules[lsc].id] = lsc;
 					// console.log("before", schedules[lsc]);
@@ -202,34 +181,23 @@ class Mosaic {
 					// console.log("after", schedules[lsc]);
 					schedules[lsc].has_time_description = _.flatMap(_.castArray(schedules[lsc].has_time_description), 'data.0');
 				}
-
-				//@NOTE mapping agents (keymap is faster than _.keyBy)
 				while (la--) {
 					sch = agents[la].get("has_schedule");
-					r_sch = sch && sch.resource;
 					sch = sch && sch.prebook;
-					if (!sch || !r_sch)
+					if (!sch)
 						continue;
 					amap[agents[la].id] = [];
-					amap[agents[la].id + "-resource"] = [];
 					sch = (sch.constructor == Array ? sch : [sch]);
 					l = sch.length;
 					while (l--) {
 						amap[agents[la].id].push(scmap[sch[l]]);
 					}
 
-					l = r_sch.length;
-					while (l--) {
-						amap[agents[la].id + "-resource"].push(scmap[r_sch[l]]);
-					}
-
 					prov = agents[la].get("provides");
 					pmap[agents[la].id] = prov;
 				}
+				console.log("###############################################################\n", amap);
 
-				// console.log("###############################################################\n", amap);
-
-				//@NOTE days computing
 				return Promise.mapSeries(days, day_data => this.patchwerk.get('Ticket', {
 							date: day_data.d_date_key,
 							department: day_data.org_merged.id,
