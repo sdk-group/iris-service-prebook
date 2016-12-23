@@ -1541,9 +1541,7 @@ class Prebook {
 						return _.reduce(md, (acc, res, index) => {
 							let pre = days_missing[index];
 							let q = _.get(res, `${srv}.${pre.d_date_key}`, {});
-							_.set(res, `${srv}.${pre.d_date_key}`, q);
-							// console.log("MISSING", acc, pre.d_date.format("YYYY-MM-DD"));
-							return _.merge(acc, res);
+							return acc;
 						}, quota || {});
 					});
 			})

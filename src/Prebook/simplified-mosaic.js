@@ -130,7 +130,7 @@ class Mosaic {
 		let agents, services, schedules;
 		let query = days[0],
 			is_d_mode = query.agent_type == 'destination';
-		// console.log("###############################################################\n", query);
+		console.log("######################QUERY##########################\n", query);
 		let agent_class = is_d_mode ? 'Workstation' : 'Employee';
 		return this.patchwerk.get('Service', {
 				department: query.org_merged.id,
@@ -157,7 +157,7 @@ class Mosaic {
 							sch_obj[sc[ll]] = true;
 					}
 				}
-				// console.log("###############################################################\n", sch_obj);
+				console.log("###############################################################\n", sch_obj);
 				let sch_keys = Object.keys(sch_obj);
 				return Promise.map(sch_keys, k => this.patchwerk.get('Schedule', {
 					key: k
@@ -181,6 +181,7 @@ class Mosaic {
 					// console.log("after", schedules[lsc]);
 					schedules[lsc].has_time_description = _.flatMap(_.castArray(schedules[lsc].has_time_description), 'data.0');
 				}
+				console.log("SCHEDULES", schedules);
 				while (la--) {
 					sch = agents[la].get("has_schedule");
 					sch = sch && sch.prebook;
@@ -196,7 +197,7 @@ class Mosaic {
 					prov = agents[la].get("provides");
 					pmap[agents[la].id] = prov;
 				}
-				console.log("###############################################################\n", amap);
+				console.log("AMAP\n", amap);
 
 				return Promise.mapSeries(days, day_data => this.patchwerk.get('Ticket', {
 							date: day_data.d_date_key,
@@ -216,6 +217,7 @@ class Mosaic {
 								//certain line
 								line_idx = _.find(amap[active[la]], s => !!~_.indexOf(schedules[s].has_day, day));
 								line = schedules[line_idx];
+								// console.log("try", line, line_idx, amap[active[la]], active[la], day, schedules);
 								if (!line) continue;
 								line = line.has_time_description.slice();
 								if (!!ticks_by_agent[active[la]]) {
@@ -235,6 +237,7 @@ class Mosaic {
 								console.log("plc", line, line_sz);
 
 								let sl = services.length,
+									plan_name = _planName(active[la], query.org_merged.id, day_data.d_date_key),
 									service;
 								for (var ii = 0; ii < sl; ii++) {
 									service = services[ii];
@@ -253,9 +256,9 @@ class Mosaic {
 											// console.log(service.parent.id, j, curr, nxt);
 											res[service.parent.id].push({
 												time_description: [curr, nxt],
-												operator: is_d_mode ? null : agents[la].id,
-												destination: is_d_mode ? agents[la].id : null,
-												source: _planName(agents[la].id, query.org_merged.id, day_data.d_date_key)
+												operator: is_d_mode ? null : active[la],
+												destination: is_d_mode ? active[la] : null,
+												source: plan_name
 											});
 											curr = nxt;
 										}
@@ -264,13 +267,13 @@ class Mosaic {
 
 								// console.log(active[la], line);
 							}
-							// console.log(require("util")
-							// 	.inspect(res, {
+							// console.log("RESULTS", require("util")
+							// 	.inspect(res[query.service], {
 							// 		depth: null
 							// 	}))
 
 							console.log("SAVING MOSAIC");
-							return Promise.map(service_ids, s_id => !!res[s_id] && this.save(query.org_merged.id, s_id, day_data.d_date, day_data.d_date_key, res[s_id]), {
+							return Promise.map(service_ids, s_id => this.save(query.org_merged.id, s_id, day_data.d_date, day_data.d_date_key, res[s_id] || []), {
 								concurrency: 50
 							});
 						})
