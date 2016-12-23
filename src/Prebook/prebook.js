@@ -220,8 +220,8 @@ class Prebook {
 				let psch = _.find(_.castArray(org.org_merged.has_schedule.prebook || []), (piece) => {
 					return !!~_.indexOf(piece.has_day, dedicated.format('dddd'));
 				});
-				let lchunks = lsch ? _.flatMap(lsch.has_time_description, 'data.0') : [86400];
-				let pchunks = psch ? _.flatMap(psch.has_time_description, 'data.0') : [86400];
+				let lchunks = lsch ? _.flatMap(_.castArray(lsch.has_time_description), 'data.0') : [86400];
+				let pchunks = psch ? _.flatMap(_.castArray(psch.has_time_description), 'data.0') : [86400];
 				let ltd = [now, _.max(lchunks) || 86400];
 				let ptd = [now + org.org_merged.prebook_observe_offset, _.max(pchunks) || 86400];
 
@@ -628,38 +628,41 @@ class Prebook {
 				let count = _.round((pre.available.prebook || 0) / (pre.data.srv.prebook_operation_time));
 				// org = pre.data;
 				// console.log("OBSERVING PREBOOK II", count, pre.available, org.org_merged.prebook_observe_max_slots || count);
-				return !success ? [] : this._getOrComputeServiceSlots(org, count);
+				// return !success ? [] : this._getOrComputeServiceSlots(org, count);
+				return SimplifiedMosaic.placementCheck(pre.data, tickets);
 			})
-			.then((cache) => {
-				let placed = {},
-					slot, ticket, ll = tickets.length;
-				for (var i = 0; i < ll; i++) {
-					ticket = tickets[i];
-					let all_slots = this._constructSolidSlots(cache, ticket.service_count),
-						l = all_slots.length;
-					for (var j = 0; j < l; j++) {
-						slot = all_slots[j];
-						if (_.some(slot.from, s => s.placed))
-							continue;
-						if (slot.time_description[0] == ticket.time_description[0] &&
-							slot.time_description[1] == ticket.time_description[1] &&
-							(!ticket.operator || slot.operator == ticket.operator) &&
-							(!slot.service || slot.service == ticket.service)) {
-							_.map(slot.from, single_slot => {
-								single_slot.placed = true
-							});
-							placed[i] = true;
-						}
-					}
-				}
-				console.log("##############################################################\n", tickets, _.filter(cache, 'placed'), placed);
-				placed = Object.keys(placed);
-				return Promise.resolve(placed.length == tickets.length);
-			});
+			.then(res => res.success);
+		// .then((cache) => {
+		// 	let placed = {},
+		// 		slot, ticket, ll = tickets.length;
+		// 	for (var i = 0; i < ll; i++) {
+		// 		ticket = tickets[i];
+		// 		let all_slots = this._constructSolidSlots(cache, ticket.service_count),
+		// 			l = all_slots.length;
+		// 		console.log("AAAAAAAAAAAAAAAAAAAA", all_slots, ticket);
+		// 		for (var j = 0; j < l; j++) {
+		// 			slot = all_slots[j];
+		// 			if (_.some(slot.from, s => s.placed))
+		// 				continue;
+		// 			if (slot.time_description[0] == ticket.time_description[0] &&
+		// 				slot.time_description[1] == ticket.time_description[1] &&
+		// 				(!ticket.operator || slot.operator == ticket.operator) &&
+		// 				(!slot.service || slot.service == ticket.service)) {
+		// 				_.map(slot.from, single_slot => {
+		// 					single_slot.placed = true
+		// 				});
+		// 				placed[i] = true;
+		// 			}
+		// 		}
+		// 	}
+		// 	// console.log("##############################################################\n", tickets, _.filter(cache, 'placed'), placed);
+		// 	placed = Object.keys(placed);
+		// 	return Promise.resolve(placed.length == tickets.length);
+		// });
 	}
 
 	_confirm(force, org, tickets) {
-		let manualObserve = org.today ? Promise.resolve(true) : (force ? Promise.resolve(true) : this._checkSlots(org, tickets));
+		let manualObserve = (force ? Promise.resolve(true) : this._checkSlots(org, tickets));
 		return manualObserve.then(approval => {
 				if (!approval)
 					return Promise.reject(new Error('Failed to place a ticket.'));
@@ -674,7 +677,7 @@ class Prebook {
 					tickets: tickets,
 					method: 'prebook',
 					// nocheck: !!force,
-					nocheck: org.today ? !!force : true,
+					nocheck: true,
 					today: org.today
 				});
 			})
@@ -977,7 +980,7 @@ class Prebook {
 				// let count = org.org_merged.prebook_observe_max_slots || 1000
 				let count = _.round((pre.available.prebook || 0) / (pre.data.srv.prebook_operation_time * s_count));
 				// org = pre.data;
-				// console.log("OBSERVING PREBOOK II", count, pre.available, org.org_merged.prebook_observe_max_slots || count);
+				// console.log("OBSERVING PREBOOK II\n$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$\n", count, pre.available, pre.data.srv.prebook_operation_time, s_count, service_count);
 				return !success ? [] : this.getServiceSlots({
 					preprocessed: org,
 					operator: operator,
@@ -1048,7 +1051,7 @@ class Prebook {
 					let pre = val.data;
 					let local_key = pre.d_date.format();
 					let success = val.success && val.max_solid.prebook && (val.max_solid.prebook >= pre.srv.prebook_operation_time * s_count);
-					// console.log("OBSERVING PREBOOK II", success, val.success, val.max_solid.prebook, (val.max_solid.prebook >= pre.srv.prebook_operation_time * s_count));
+					(pre.d_date_key == "2016-12-22") && console.log("OBSERVING PREBOOK II", success, val, s_count);
 					if (!success) {
 						acc[local_key] = success;
 					} else {
@@ -1263,7 +1266,8 @@ class Prebook {
 
 
 	_precomputeServiceSlots(days) {
-		return SimplifiedMosaic.observeDays(days);
+		return SimplifiedMosaic.observeDays(days)
+			.then(res => SimplifiedMosaic.save(days[0].org_merged.id));
 	}
 
 	_mosaicSaveSlots(office, service, date, date_key, data) {
@@ -1291,11 +1295,11 @@ class Prebook {
 		return this.iris.ticket_api.getServiceSlotsCache(preprocessed.org_merged.id, preprocessed.service, preprocessed.d_date_key)
 			.then((res) => {
 				res = res || [];
-				return !preprocessed.today ? Promise.resolve(res) : this.computeServiceSlots({
+				return !preprocessed.today ? Promise.resolve(res) : this.computeTodayServiceSlots({
 						preprocessed,
 						count: count
 					})
-					.then((computed) => _.map(computed, (t) => _.pick(t, ['time_description', 'operator', 'destination', 'source'])) || []);
+					// .then((computed) => _.map(computed, (t) => _.pick(t, ['time_description', 'operator', 'destination', 'source'])) || []);
 			});
 	}
 
@@ -1332,7 +1336,6 @@ class Prebook {
 				else
 					break;
 			}
-			// console.log("AAAAAA", _.size(curr), s_count);
 			if (_.size(curr) == s_count) {
 				// console.log("PUSHING", curr);
 				solid_slots.push({
@@ -1372,8 +1375,8 @@ class Prebook {
 				time = process.hrtime();
 				let solid_slots = this._constructSolidSlots(cache, s_count, operator, destination);
 
-				// console.log("SOLID SLOTS", solid_slots, uniq_interval);
 				let uniq_interval = preprocessed.org_merged.prebook_slot_uniq_interval || 60;
+				// console.log("SOLID SLOTS", solid_slots, uniq_interval);
 				let threshold = 0;
 				let slots = _.filter(solid_slots, (tick) => {
 					let eq = tick.time_description[0] < threshold;
@@ -1400,72 +1403,38 @@ class Prebook {
 				reset: true
 			})
 			.then(res => this._precomputeServiceSlots(days));
-		// console.log("AAAAAAAAAAAAAAAAAAAAAAAA", data);
 	}
 
 
-	// actionUpdateServiceSlots(data) {
-	// let expiry = date ? moment(date)
-	// 	.add(1, 'day')
-	// 	.diff(moment(), 'seconds') : 0;
-	// return reset ? this.cacheServiceSlots(data) : this.iris.ticket_api.cacheServiceSlots(office, service, date, data, {
-	// 	expiry
-	// });
-	// }
-
-
-	cacheServiceSlots({
-		preprocessed,
-		count
-	}) {
-		let new_slots;
-		return this.computeServiceSlots({
-				preprocessed,
-				count: count
-			})
-			.then((res) => {
-				let expiry = moment(preprocessed.d_date)
-					.add(1, 'day')
-					.diff(moment(), 'seconds');
-				new_slots = _.map(res, t => {
-					return _.pick(t, ['time_description', 'operator', 'destination', 'source', 'locked_fields']);
-				});
-				// console.log("NEW SLOTS", require('util')
-				// 	.inspect(new_slots, {
-				// 		depth: null
-				// 	}));
-
-				return this.iris.ticket_api.cacheServiceSlots(preprocessed.org_merged.id, preprocessed.service, preprocessed.d_date_key, new_slots, {
-					expiry
-				});
-			});
-	}
-
-	computeServiceSlots({
+	computeTodayServiceSlots({
 		preprocessed,
 		count
 	}) {
 		// console.log("PRE CMP SS", preprocessed);
-		return this.iris.observe({
-				actor: '*',
-				services: [{
-					service: preprocessed.service,
-					time_description: preprocessed.srv.prebook_operation_time,
-					service_count: 1
-				}],
-				time_description: preprocessed.td,
-				dedicated_date: preprocessed.d_date,
-				service_keys: this.services.getSystemName('registry', 'service', [preprocessed.org_merged.id]),
-				actor_keys: preprocessed.agent_keys.all,
-				actor_type: preprocessed.agent_type,
-				organization: preprocessed.org_merged.id,
-				count: count,
-				method: 'prebook',
-				today: preprocessed.today
-			})
-			.then(res => {
-				return _.filter(res, t => !!t.source);
+		return SimplifiedMosaic.observeDays(preprocessed, preprocessed.service)
+			.then(() => {
+				return SimplifiedMosaic.get([preprocessed.org_merged.id, preprocessed.d_date_key, preprocessed.service]);
 			});
+		// return this.iris.observe({
+		// 		actor: '*',
+		// 		services: [{
+		// 			service: preprocessed.service,
+		// 			time_description: preprocessed.srv.prebook_operation_time,
+		// 			service_count: 1
+		// 		}],
+		// 		time_description: preprocessed.td,
+		// 		dedicated_date: preprocessed.d_date,
+		// 		service_keys: this.services.getSystemName('registry', 'service', [preprocessed.org_merged.id]),
+		// 		actor_keys: preprocessed.agent_keys.all,
+		// 		actor_type: preprocessed.agent_type,
+		// 		organization: preprocessed.org_merged.id,
+		// 		count: count,
+		// 		method: 'prebook',
+		// 		today: preprocessed.today
+		// 	})
+		// 	.then(res => {
+		// 		return _.filter(res, t => !!t.source);
+		// 	});
 	}
 
 	cacheServiceQuota(
@@ -1497,6 +1466,7 @@ class Prebook {
 				organization: preprocessed.org_merged.id,
 				method: 'prebook',
 				quota_status: true,
+				// quota_status_services: preprocessed.today && preprocessed.service,
 				today: preprocessed.today
 			})
 			.then((res) => {
@@ -1579,7 +1549,7 @@ class Prebook {
 						}
 					});
 					let success = !!(stats.max_available.prebook * part) && ((stats.max_available.prebook * part) >= (stats.reserved));
-					// console.log("STATS", part, stats, `${org}.${srv}.${date}`, stats.max_available.prebook, stats.max_available.prebook * part, stats.reserved);
+					(date == "2016-12-22") && console.log("STATS", part, stats, `${org}.${srv}.${date}`, stats.max_available.prebook, stats.max_available.prebook * part, stats.reserved);
 					return {
 						success,
 						available: stats.available,
