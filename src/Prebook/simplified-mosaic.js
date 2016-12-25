@@ -286,7 +286,7 @@ class Mosaic {
 										insertTick(r_line, t.get("time_description"), t.get("service_count"));
 									});
 								}
-								// console.log("befo", line);
+								console.log("befo", r_line);
 								//@NOTE putting the rest ticks, ignore unplaced
 								if (!!ticks_by_agent.rest) {
 									_.map(ticks_by_agent.rest, t => {
@@ -295,6 +295,8 @@ class Mosaic {
 										}
 									});
 								}
+								console.log("befo", r_line);
+
 								lines[active[la]] = intersect(line, r_line);
 							}
 
