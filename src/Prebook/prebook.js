@@ -784,6 +784,20 @@ class Prebook {
 				// .then((approval) => {
 				// 	if (org.org_merged.max_slots_per_day && !approval)
 				// 		return Promise.reject("Failed to place a ticket: reached slots limit.");
+				if (org.ws && org.ws.prebook_autoregister) {
+					let now = moment.tz(org.org_merged.org_timezone);
+					let tick_start = (source_info.time_description.constructor === Array) ? source_info.time_description[0] : 0;
+					let to = moment.tz(source_info.dedicated_date, org.org_merged.org_timezone)
+						.clone()
+						.add(tick_start, 'seconds');
+					let from = to.clone()
+						.subtract(org.org_merged.prebook_register_interval, 'days')
+						.endOf('day');
+					// console.log("------------------------>CL", org.org_merged.prebook_register_interval, from.diff(now), _.get(tick, ['time_description', '0'], 0));
+					if (from.diff(now) > 0)
+						return Promise.reject(new Error(`Too early.`));
+				}
+
 
 				return this.emitter.addTask('history', {
 					_action: 'make-entry',
