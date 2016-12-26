@@ -537,7 +537,6 @@ class Mosaic {
 							active = Object.keys(amap),
 							la = active.length,
 							line, r_line, line_idx, r_line_idx,
-							line_sz, gap, optime, curr, nxt, ts, slots_cnt,
 							day = day_data.d_date.format('dddd'),
 							org_time_description = [0, 86400],
 							mask = [day_data.today ? now : 0, 86400];
