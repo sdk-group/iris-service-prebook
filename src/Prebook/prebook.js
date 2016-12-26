@@ -785,7 +785,7 @@ class Prebook {
 					// console.log(org);
 					let now = moment.tz(org.org_merged.org_timezone);
 					let tick_start = (source_info.time_description.constructor === Array) ? source_info.time_description[0] : 0;
-					let to = org.d_date.clone()
+					let to = moment.tz(org.d_date_key, org.org_merged.org_timezone)
 						.add(tick_start, 'seconds');
 					let from = to.clone()
 						.subtract(org.org_merged.prebook_register_interval, 'days')
