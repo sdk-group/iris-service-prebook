@@ -135,6 +135,7 @@ class Mosaic {
 
 		let now = this._now(query);
 		let mode = this._modeOption(query);
+		let active_states = ['registered', 'booked', 'called', 'postponed'];
 
 		return this.patchwerk.get('Service', {
 				department: query.org_merged.id,
@@ -150,22 +151,28 @@ class Mosaic {
 				//@NOTE collecting schedule keys from agents
 				let sch_obj = {},
 					l = agents.length,
-					ll;
+					ll, sca, sc;
 				while (l--) {
-					let sc = agents[l].get("has_schedule");
-					sc = sc && sc.prebook || [];
-					ll = sc.length;
+					sc = agents[l].get("has_schedule");
+					sca = _.castArray(sc && sc.prebook || []);
+					ll = sca.length;
 					while (ll--) {
-						if (!sch_obj[sc[ll]])
-							sch_obj[sc[ll]] = true;
+						if (!sch_obj[sca[ll]])
+							sch_obj[sca[ll]] = true;
 					}
 
-					sc = agents[l].get("has_schedule");
-					sc = _.castArray(sc && sc.resource || []);
-					ll = sc.length;
+					sca = _.castArray(sc && sc.resource || []);
+					ll = sca.length;
 					while (ll--) {
-						if (!sch_obj[sc[ll]])
-							sch_obj[sc[ll]] = true;
+						if (!sch_obj[sca[ll]])
+							sch_obj[sca[ll]] = true;
+					}
+
+					sca = _.castArray(sc && sc.live || []);
+					ll = sca.length;
+					while (ll--) {
+						if (!sch_obj[sca[ll]])
+							sch_obj[sca[ll]] = true;
 					}
 				}
 
@@ -194,10 +201,11 @@ class Mosaic {
 					service_ids = _.map(services, srv => srv.parent.id);
 				let amap = {},
 					rmap = {},
+					lmap = {},
 					srv = {},
 					scmap = {},
 					pmap = {},
-					sch, r_sch,
+					sch, r_sch, l_sch,
 					l, prov;
 				//@NOTE mapping schedules for easier access
 				while (lsc--) {
@@ -214,21 +222,33 @@ class Mosaic {
 				while (la--) {
 					sch = agents[la].get("has_schedule");
 					r_sch = sch && sch.resource;
+					l_sch = sch && sch.live;
 					sch = sch && sch.prebook;
-					if (!sch || !r_sch)
+					if (!r_sch)
 						continue;
 					amap[agents[la].id] = [];
 					rmap[agents[la].id] = [];
-					sch = (sch.constructor == Array ? sch : [sch]);
-					l = sch.length;
-					while (l--) {
-						amap[agents[la].id].push(scmap[sch[l]]);
+					lmap[agents[la].id] = [];
+					if (sch) {
+						sch = (sch.constructor == Array ? sch : [sch]);
+						l = sch.length;
+						while (l--) {
+							amap[agents[la].id].push(scmap[sch[l]]);
+						}
 					}
 
 					r_sch = (r_sch.constructor == Array ? r_sch : [r_sch]);
 					l = r_sch.length;
 					while (l--) {
 						rmap[agents[la].id].push(scmap[r_sch[l]]);
+					}
+
+					if (l_sch) {
+						l_sch = (l_sch.constructor == Array ? l_sch : [l_sch]);
+						l = l_sch.length;
+						while (l--) {
+							lmap[agents[la].id].push(scmap[l_sch[l]]);
+						}
 					}
 
 					prov = agents[la].get("provides");
@@ -246,7 +266,9 @@ class Mosaic {
 						if (tickets.length == 1 && !tickets[0]["@id"])
 							tickets = [];
 						let lines = {},
-							active = Object.keys(amap),
+							l_slots = {},
+							p_slots = {},
+							active = Object.keys(rmap),
 							la = active.length,
 							line, r_line, line_idx, r_line_idx,
 							line_sz, gap, optime, curr, nxt, ts, slots_cnt,
@@ -261,20 +283,16 @@ class Mosaic {
 						}
 
 						//@NOTE dividing ticks to agent-bound  and any-line
-						let ticks_by_agent = _.groupBy(_.filter(tickets, t => (t.get("state") == 'booked' || t.get("state") == 'registered')), t => (t.get(query.agent_type) || 'rest'));
+						let ticks_by_agent = _.groupBy(_.filter(tickets, t => !!~active_states.indexOf(t.get("state"))), t => (t.get(query.agent_type) || 'rest'));
 						while (la--) {
 							//certain line
-							line_idx = _.find(amap[active[la]], s => !!~_.indexOf(schedules[s].has_day, day));
-							line = schedules[line_idx];
 
 							r_line_idx = _.find(rmap[active[la]], s => !!~_.indexOf(schedules[s].has_day, day));
 							r_line = schedules[r_line_idx];
 
-							if (!line || !r_line) continue;
+							if (!r_line) continue;
 							r_line = r_line.has_time_description.slice();
-							r_line = intersect(r_line, mask);
-							line = line.has_time_description.slice();
-							console.log("line", active[la], line, r_line, day_data.td);
+
 
 							//@NOTE apply organization line to agent line
 							//@NOTE putting bound ticks to lines, ignore unplaced
@@ -292,7 +310,21 @@ class Mosaic {
 									}
 								});
 							}
-							lines[active[la]] = intersect(line, r_line);
+
+							r_line = intersect(r_line, mask);
+
+							lines[active[la]] = lines[active[la]] || {};
+
+							line_idx = _.find(amap[active[la]], s => !!~_.indexOf(schedules[s].has_day, day));
+							line = schedules[line_idx];
+							line = line.has_time_description.slice();
+							console.log("line", active[la], line, r_line, day_data.td);
+							lines[active[la]].prebook = intersect(line, r_line);
+
+							line_idx = _.find(lmap[active[la]], s => !!~_.indexOf(schedules[s].has_day, day));
+							line = schedules[line_idx];
+							line = line.has_time_description.slice();
+							lines[active[la]].live = intersect(line, r_line);
 						}
 
 						console.log("lines", lines);
@@ -300,7 +332,6 @@ class Mosaic {
 						// console.log("new tick by agent", new_ticks);
 
 						la = active.length;
-						let new_ticks_by_agent = _.groupBy(_.filter(new_ticks, t => (t.state == 'booked' || t.state == 'registered')), t => (t[query.agent_type] || 'rest'));
 						while (la--) {
 							console.log(active[la], lines[active[la]]);
 							line = lines[active[la]];
@@ -308,40 +339,39 @@ class Mosaic {
 								continue;
 							line = intersect(line, org_time_description);
 
-							if (!!new_ticks_by_agent[active[la]]) {
-								_.map(new_ticks_by_agent[active[la]], t => {
-									insertTick(line, t.time_description, t.service_count);
-								});
-							}
-							// console.log("befo", line);
-							//@NOTE putting the rest ticks, ignore unplaced
-							if (!!new_ticks_by_agent.rest) {
-								_.map(new_ticks_by_agent.rest, t => {
-									if (!t.placed && provides(pmap[active[la]], t.service)) {
-										t.placed = insertTick(line, t.time_description, t.service_count);
+							let sl = services.length,
+								plan_name = _planName(active[la], query.org_merged.id, day_data.d_date_key),
+								service;
+							for (var ii = 0; ii < sl; ii++) {
+								service = services[ii];
+								optime = service.get("prebook_operation_time");
+								p_slots[service.parent.id] = p_slots[service.parent.id] || [];
+								// console.log("provides", active[la], service.parent.id, provides(pmap[active[la]], service.parent.id));
+								if (!provides(pmap[active[la]], service.parent.id))
+									continue;
+								for (var i = 0; i < line_sz; i = i + 2) {
+									gap = line[i + 1] - line[i];
+									slots_cnt = (gap / optime) | 0;
+									curr = line[i];
+									// console.log(service.parent.id, i, gap, line[i + 1], line[i], line_sz);
+									for (var j = 0; j < slots_cnt; j++) {
+										nxt = curr + optime;
+										// console.log(service.parent.id, j, curr, nxt);
+										res[service.parent.id].push({
+											time_description: [curr, nxt],
+											operator: mode.is_d_mode ? null : active[la],
+											destination: mode.is_d_mode ? active[la] : null,
+											source: plan_name
+										});
+										curr = nxt;
 									}
-								});
+								}
 							}
 						}
 
-						let lt = new_ticks.length,
-							placed = [],
-							lost = [];
-						while (lt--) {
-							if (new_ticks[lt].placed) {
-								placed.push(new_ticks[lt]);
-								_.unset(new_ticks[lt], "placed");
-							} else {
-								lost.push(new_ticks[lt]);
-							}
-						}
 						let diff = process.hrtime(time);
 						console.log('OBSERVED MOSAIC SLOTS IN %d seconds', diff[0] + diff[1] / 1e9);
-						return {
-							success: placed.length == new_ticks.length,
-							placed: placed,
-							lost: lost
-						};
+
 					});
 			})
 
@@ -511,6 +541,27 @@ class Mosaic {
 
 	}
 
+
+	_now(query) {
+		return moment.tz(query.org_merged.org_timezone)
+			.diff(moment.tz(query.org_merged.org_timezone)
+				.startOf('day'), 'seconds') + query.org_merged.prebook_observe_offset;
+	}
+
+	_modeOption(query) {
+		let is_d_mode = query.agent_type == 'destination';
+		let agent_class = is_d_mode ? 'Workstation' : 'Employee';
+		return {
+			agent_class: agent_class,
+			is_d_mode: is_d_mode
+		};
+	}
+
+	_agents(query, mode) {
+		return Promise.map(query.agent_keys.all, k => this.patchwerk.get(mode.agent_class, {
+			key: k
+		}));
+	}
 
 }
 
