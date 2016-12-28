@@ -201,8 +201,7 @@ class Prebook {
 					role: 'Operator',
 					organization: org.org_merged.id,
 					state: !!org.org_merged.ignore_agent_state ? '*' : ['active']
-				})),
-				srv: this.services.getServiceIds(org.org_merged.id)
+				}))
 			})
 			.then(({
 				agent_keys,
@@ -214,17 +213,6 @@ class Prebook {
 					.diff(moment.tz(tz)
 						.startOf('day'), 'seconds');
 
-				let lsch = _.find(_.castArray(org.org_merged.has_schedule.live || []), (piece) => {
-					return !!~_.indexOf(piece.has_day, dedicated.format('dddd'));
-				});
-				let psch = _.find(_.castArray(org.org_merged.has_schedule.prebook || []), (piece) => {
-					return !!~_.indexOf(piece.has_day, dedicated.format('dddd'));
-				});
-				let lchunks = lsch ? _.flatMap(lsch.has_time_description, 'data.0') : [86400];
-				let pchunks = psch ? _.flatMap(psch.has_time_description, 'data.0') : [86400];
-				let ltd = [now, _.max(lchunks) || 86400];
-				let ptd = [now + org.org_merged.prebook_observe_offset, _.max(pchunks) || 86400];
-
 				return {
 					org_addr: org.org_addr,
 					org_merged: org.org_merged,
@@ -232,101 +220,30 @@ class Prebook {
 					agent_type: org.agent_type,
 					agent_keys: agent_keys,
 					d_date: dedicated,
-					ltd: ltd,
-					ptd: ptd,
-					service_keys: srv
+					d_date_key: dedicated.format("YYYY-MM-DD"),
+					today: true
 				};
 			})
 			.then(preprocessed => {
 				org = preprocessed;
-				return Collector.process({
-					actor: org.agent_keys.active,
-					time_description: org.ltd,
-					dedicated_date: org.d_date,
-					service_keys: this.services.getSystemName('registry', 'service', [org.org_merged.id]),
-					actor_keys: org.agent_keys.all,
-					actor_type: org.agent_type,
-					organization: org.org_merged.id,
-					method: 'live',
-					quota_status: true,
-					today: true
-				});
+				return SimplifiedMosaic.daySlots(preprocessed);
 			})
 			.then((res) => {
-				stats = res.stats || {};
-				return Collector.process({
-					actor: '*',
-					time_description: org.ptd,
-					dedicated_date: org.d_date,
-					service_keys: this.services.getSystemName('registry', 'service', [org.org_merged.id]),
-					actor_keys: org.agent_keys.all,
-					actor_type: org.agent_type,
-					organization: org.org_merged.id,
-					method: 'prebook',
-					quota_status: true,
-					today: true
-				});
-			})
-			.then((res) => {
-				stats = _.merge(stats, res.stats);
-				return Promise.mapSeries(org.service_keys, (service) => {
-					return this.patchwerk.get('Service', {
-						department: org.org_merged.id,
-						counter: _.last(_.split(service, '-'))
-					});
-				});
-			})
-			.then((res) => {
-				// console.log(res);
 				let expiry = [];
-				let date = moment.tz(org.org_merged.org_timezone)
-					.format("YYYY-MM-DD");
-				let dummy = {
-					available: {
-						live: 0,
-						prebook: 0
-					},
-					max_available: {
-						live: 0,
-						prebook: 0
-					},
-					max_solid: {
-						live: 0,
-						prebook: 0
-					},
-					reserved: 0,
-					mapping: {
-						live: [],
-						prebook: []
-					}
-				};
-
-				let result = _.reduce(res, (acc, srv, index) => {
-					//@FIXIT: proper way to determine service key
-					// let success = !!(stats.max_available.live * part) && ((stats.max_available.live * part) >= (stats.reserved));
-					let part = _.clamp(srv.prebook_today_percentage || 0, 0, 100) / 100;;
-					// console.log("FILL SRV", _.get(stats, [org.service_keys[index], date], {}));
-					let srv_data = stats[org.service_keys[index]] && stats[org.service_keys[index]][date] || {};
-					_.defaultsDeep(srv_data, dummy);
-					// console.log(org.org_merged.id, org.service_keys[index], _.head(stats[org.service_keys[index]]), srv_data, srv);
-					acc[org.service_keys[index]] = {
-						live_slot_size: srv.live_operation_time,
-						prebook_slot_size: srv.prebook_operation_time,
-						live_available_time: srv_data.available.live,
-						prebook_available_time: srv_data.available.prebook,
-						live_total_time: srv_data.max_available.live,
-						prebook_total_time: srv_data.max_available.prebook,
-						live_solid_time: srv_data.max_solid.live,
-						prebook_solid_time: srv_data.max_solid.prebook,
-						live_chunk_mapping: srv_data.mapping.live,
-						prebook_chunk_mapping: srv_data.mapping.prebook,
-						prebook_percentage: part,
-						reserved: srv_data.reserved
-					};
-					expiry.push(srv.live_operation_time, srv.prebook_operation_time);
+				let result = _.reduce(res.prebook_stats, (acc, s_stats, s_id) => {
+					acc[s_id] = s_stats;
+					acc[s_id].prebook_slots_count = (res.prebook[s_id] || [])
+						.length;
+					acc[s_id].live_slots_count = (res.live[s_id] || [])
+						.length;
+					expiry.push(s_stats.live_expiry, s_stats.prebook_expiry);
 
 					return acc;
 				}, {});
+				// console.log(require("util")
+				// 	.inspect(result, {
+				// 		depth: null
+				// 	}));
 				return {
 					data: result,
 					expiry: _.min(expiry)
@@ -791,6 +708,7 @@ class Prebook {
 						.subtract(org.org_merged.prebook_register_interval, 'days')
 						.endOf('day');
 					// console.log("------------------------>CL", org.org_merged.prebook_register_interval, from.diff(now), _.get(tick, ['time_description', '0'], 0));
+					console.log("TICKSTART", tick_start, to.format(), from.format(), from.diff(now));
 					if (from.diff(now) > 0)
 						return Promise.reject(new Error(`Too early.`));
 				}
@@ -1478,6 +1396,10 @@ class Prebook {
 				today: preprocessed.today
 			})
 			.then(res => {
+				// console.log("slots", require('util')
+				// 	.inspect(res, {
+				// 		depth: null
+				// 	}));
 				return _.filter(res, t => !!t.source);
 			});
 	}
