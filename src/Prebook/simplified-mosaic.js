@@ -52,7 +52,7 @@ function insertTick(plan, tick_td, sc = 1) {
 	let l = plan.length,
 		success = false,
 		tick;
-	// console.log("INSERTING TICK", plan, tick_td);
+	console.log("INSERTING TICK", plan, tick_td);
 	for (var i = 1; i < l; i = i + 2) {
 		tick = _isArray(tick_td) ? tick_td : [plan[i - 1], plan[i - 1] + parseInt(tick_td) * parseInt(sc)];
 		// console.log("TTICK TD", tick_td, tick);
@@ -97,9 +97,6 @@ function intersect(c1, c2) {
 	let looser = c1[0] >= c2[0] ? c1 : c2;
 
 	let result = [];
-	if (c1.length == 0 || c2.length == 0) {
-		return result;
-	}
 	let last = _.min([c1[c1.length - 1], c2[c2.length - 1]]);
 	let next = true;
 
@@ -257,19 +254,12 @@ class Mosaic {
 				//@NOTE collecting schedule keys from services
 				l = services.length;
 				while (l--) {
-					sc = services[l].get("has_schedule");
-					sca = _.castArray(sc && sc.prebook || []);
-					ll = sca.length;
+					let sc = services[l].get("has_schedule");
+					sc = sc && sc.prebook || [];
+					ll = sc.length;
 					while (ll--) {
-						if (!sch_obj[sca[ll]])
-							sch_obj[sca[ll]] = true;
-					}
-
-					sca = _.castArray(sc && sc.live || []);
-					ll = sca.length;
-					while (ll--) {
-						if (!sch_obj[sca[ll]])
-							sch_obj[sca[ll]] = true;
+						if (!sch_obj[sc[ll]])
+							sch_obj[sc[ll]] = true;
 					}
 				}
 				// console.log("###############################################################\n", sch_obj);
@@ -287,8 +277,7 @@ class Mosaic {
 				let amap = {},
 					rmap = {},
 					lmap = {},
-					p_srv = {},
-					l_srv = {},
+					srv = {},
 					scmap = {},
 					pmap = {},
 					sch, r_sch, l_sch,
@@ -340,29 +329,6 @@ class Mosaic {
 					pmap[agents[la].id] = agents[la];
 				}
 				// console.log("amap", amap);
-				la = services.length;
-				while (la--) {
-					sch = services[la].get("has_schedule");
-					l_sch = sch && sch.live;
-					r_sch = sch && sch.prebook;
-					p_srv[services[la].parent.id] = [];
-					l_srv[services[la].parent.id] = [];
-					if (r_sch) {
-						r_sch = (r_sch.constructor == Array ? r_sch : [r_sch]);
-						l = r_sch.length;
-						while (l--) {
-							p_srv[services[la].parent.id].push(scmap[r_sch[l]]);
-						}
-					}
-
-					if (l_sch) {
-						l_sch = (l_sch.constructor == Array ? l_sch : [l_sch]);
-						l = l_sch.length;
-						while (l--) {
-							l_srv[services[la].parent.id].push(scmap[l_sch[l]]);
-						}
-					}
-				}
 
 				let day_data = query;
 				return this.patchwerk.get('Ticket', {
@@ -460,7 +426,7 @@ class Mosaic {
 							//@NOTE temporal replacement of commented above code
 							r_line = lines[active[la]].prebook && lines[active[la]].prebook.slice();
 							line = lines[active[la]].live && intersect(lines[active[la]].live, mask);
-							// console.log(active[la], "p", r_line, "L", line);
+							console.log(active[la], "p", r_line, "L", line);
 							if (!!ticks_by_agent[active[la]]) {
 								_.map(ticks_by_agent[active[la]], t => {
 									if (line && (t.get("booking_method") == "prebook")) {
@@ -502,46 +468,21 @@ class Mosaic {
 						let ticks_reserved = (statTickets(tickets))
 							.reserved_prebook;
 
-						let a_line, a_line_sz,
-							s_lines = {};
-						la = services.length;
-						while (la--) {
-							line_idx = _.find(p_srv[services[la].parent.id], s => !!~_.indexOf(schedules[s].has_day, day));
-							line = schedules[line_idx];
-							s_lines[services[la].parent.id] = s_lines[services[la].parent.id] || {};
-							if (line) {
-								line = line.has_time_description.slice();
-								s_lines[services[la].parent.id].prebook = line;
-							}
-
-							line_idx = _.find(l_srv[services[la].parent.id], s => !!~_.indexOf(schedules[s].has_day, day));
-							line = schedules[line_idx];
-							if (line) {
-								line = line.has_time_description.slice();
-								s_lines[services[la].parent.id].live = line;
-							}
-
-						}
-						// console.log("slines", s_lines);
 						la = active.length;
 						while (la--) {
 							// console.log(active[la], lines[active[la]]);
-							a_line = lines[active[la]].prebook;
-							if (!a_line)
+							line = lines[active[la]].prebook;
+							if (!line)
 								continue;
 							// line = intersect(line, org_time_description);
-							a_line_sz = a_line.length;
-							// console.log("appliable for prebook", active[la], lines[active[la]].prebook);
+							line_sz = line.length;
+							console.log("appliable for prebook", active[la], lines[active[la]].prebook);
 
 							let sl = services.length,
 								plan_name = _planName(active[la], query.org_merged.id, day_data.d_date_key),
 								service;
 							for (var ii = 0; ii < sl; ii++) {
 								service = services[ii];
-								line = s_lines[service.parent.id].prebook || [];
-								line = intersect(a_line, line);
-								line_sz = line.length;
-								// console.log("line", line, service.parent.id, "prebook");
 								//stats
 								p_stats[service.parent.id] = p_stats[service.parent.id] || {
 									part: _.clamp(service.get("prebook_today_percentage") || 0, 0, 100) / 100,
@@ -583,11 +524,11 @@ class Mosaic {
 
 						la = active.length;
 						while (la--) {
-							a_line = lines[active[la]].live;
-							if (!a_line)
+							line = lines[active[la]].live;
+							if (!line)
 								continue;
 							// line = intersect(line, org_time_description);
-							a_line_sz = a_line.length;
+							line_sz = line.length;
 
 							let sl = services.length,
 								plan_name = _planName(active[la], query.org_merged.id, day_data.d_date_key),
@@ -595,17 +536,10 @@ class Mosaic {
 
 							if (!agentState(pmap[active[la]], query, "live"))
 								continue;
-							// console.log("appliable for live", active[la], line, line_sz);
+							console.log("appliable for live", active[la], line, line_sz);
 
 							for (var ii = 0; ii < sl; ii++) {
 								service = services[ii];
-
-								line = s_lines[service.parent.id].live || [];
-								// console.log("preline", line, a_line, service.parent.id, "live");
-								line = intersect(a_line, line);
-								line_sz = line.length;
-								// console.log("line", line, service.parent.id, "live");
-
 								optime = service.get("live_operation_time");
 								l_slots[service.parent.id] = l_slots[service.parent.id] || [];
 								// console.log("provides", active[la], service.parent.id, provides(pmap[active[la]], service.parent.id));
