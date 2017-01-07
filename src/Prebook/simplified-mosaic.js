@@ -4,55 +4,10 @@ function _isArray(val) {
 	return val && (val.constructor == Array);
 }
 
-function statLine(initial, filled) {
-	let baseline = initial;
-	let length = 0,
-		a_length = 0,
-		chunk, max_solid = 0,
-		l = baseline.length;
-	for (var i = 1; i < l; i = i + 2) {
-		chunk = baseline[i] - baseline[i - 1];
-		max_solid = max_solid > chunk ? max_solid : chunk;
-		length += chunk;
-	}
-	baseline = filled;
-	for (var i = 1; i < l; i = i + 2) {
-		chunk = baseline[i] - baseline[i - 1];
-		max_solid = max_solid > chunk ? max_solid : chunk;
-	}
-	return {
-		max_available: length,
-		available: a_length,
-		max_solid: max_solid
-	};
-}
-
-function statTickets(ticks) {
-	let l = ticks.length,
-		reserved_live = 0,
-		reserved_prebook = 0,
-		td;
-	while (l--) {
-		if (ticks[l].get("booking_method") == "prebook") {
-			td = ticks[l].get("time_description");
-			reserved_prebook += (td.constructor == Array ? td[1] - td[0] : td);
-		}
-		if (ticks[l].get("booking_method") == "live") {
-			td = ticks[l].get("time_description");
-			reserved_live += (td.constructor == Array ? td[1] - td[0] : td);
-		}
-	}
-	return {
-		reserved_prebook: reserved_prebook,
-		reserved_live: reserved_live
-	};
-}
-
 function insertTick(plan, tick_td, sc = 1) {
 	let l = plan.length,
 		success = false,
 		tick;
-	console.log("INSERTING TICK", plan, tick_td);
 	for (var i = 1; i < l; i = i + 2) {
 		tick = _isArray(tick_td) ? tick_td : [plan[i - 1], plan[i - 1] + parseInt(tick_td) * parseInt(sc)];
 		// console.log("TTICK TD", tick_td, tick);
@@ -77,17 +32,8 @@ function insertTick(plan, tick_td, sc = 1) {
 			break;
 		}
 	}
-	return success && tick;
+	return success;
 }
-
-function markReserved(plan, tick) {
-	let chunks = intersect(plan, tick),
-		l = chunks.length;
-	for (var i = 1; i < l; i = i + 2) {
-		insertTick(plan, [chunks[i - 1], chunks[i]]);
-	}
-}
-
 
 function intersect(c1, c2) {
 	let plead = 0;
@@ -151,27 +97,6 @@ function intersect(c1, c2) {
 	}
 
 	return result;
-}
-
-function canPlace(agent, tick, initial_query) {
-	return provides(agent.get("provides"), tick.get("service")) &&
-		// bookingMethod(agent.get("filtering_method"), tick.get("booking_method")) &&
-		agentState(agent, initial_query, tick.get("booking_method"));
-}
-
-function agentState(agent, query, method) {
-	return !query.today || !!~query.agent_keys.active.indexOf(agent.id);
-}
-
-function bookingMethod(agent_method, tick_method) {
-	if (!agent_method)
-		return true;
-	if (agent_method == '*')
-		return true;
-	if (agent_method.constructor == String)
-		return agent_method == tick_method;
-	if (provision.constructor == Array)
-		return !!~agent_method.indexOf(tick_method);
 }
 
 function provides(provision, service) {
@@ -326,9 +251,10 @@ class Mosaic {
 						}
 					}
 
-					pmap[agents[la].id] = agents[la];
+					prov = agents[la].get("provides");
+					pmap[agents[la].id] = prov;
 				}
-				// console.log("amap", amap);
+				console.log("amap", amap);
 
 				let day_data = query;
 				return this.patchwerk.get('Ticket', {
@@ -339,12 +265,9 @@ class Mosaic {
 					.then(tickets => {
 						if (tickets.length == 1 && !tickets[0]["@id"])
 							tickets = [];
-
 						let lines = {},
 							l_slots = {},
 							p_slots = {},
-							pline_stats = {},
-							p_stats = {},
 							active = Object.keys(rmap),
 							la = active.length,
 							line, r_line, line_idx, r_line_idx,
@@ -363,144 +286,69 @@ class Mosaic {
 						let ticks_by_agent = _.groupBy(_.filter(tickets, t => !!~active_states.indexOf(t.get("state"))), t => (t.get(query.agent_type) || 'rest'));
 						while (la--) {
 							//certain line
+
+							r_line_idx = _.find(rmap[active[la]], s => !!~_.indexOf(schedules[s].has_day, day));
+							r_line = schedules[r_line_idx];
+
+							if (!r_line) continue;
+							r_line = r_line.has_time_description.slice();
+
+
+							//@NOTE apply organization line to agent line
+							//@NOTE putting bound ticks to lines, ignore unplaced
+							if (!!ticks_by_agent[active[la]]) {
+								_.map(ticks_by_agent[active[la]], t => {
+									insertTick(r_line, t.get("time_description"), t.get("service_count"));
+								});
+							}
+							// console.log("befo", line);
+							//@NOTE putting the rest ticks, ignore unplaced
+							if (!!ticks_by_agent.rest) {
+								_.map(ticks_by_agent.rest, t => {
+									if (!t.placed && provides(pmap[active[la]], t.get("service"))) {
+										t.placed = insertTick(r_line, t.get("time_description"), t.get("service_count"));
+									}
+								});
+							}
+
+							r_line = intersect(r_line, mask);
+
+							lines[active[la]] = lines[active[la]] || {};
+
 							line_idx = _.find(amap[active[la]], s => !!~_.indexOf(schedules[s].has_day, day));
 							line = schedules[line_idx];
-							lines[active[la]] = lines[active[la]] || {};
-							if (line) {
-								line = line.has_time_description.slice();
-								lines[active[la]].prebook = line;
-							}
+							line = line.has_time_description.slice();
+							console.log("line", active[la], line, r_line, day_data.td);
+							lines[active[la]].prebook = intersect(line, r_line);
 
 							line_idx = _.find(lmap[active[la]], s => !!~_.indexOf(schedules[s].has_day, day));
 							line = schedules[line_idx];
-							if (line) {
-								line = line.has_time_description.slice();
-								lines[active[la]].live = line;
-							}
-
+							line = line.has_time_description.slice();
+							lines[active[la]].live = intersect(line, r_line);
 						}
-						console.log("lines pre", lines);
-
-						la = active.length;
-						while (la--) {
-							//@NOTE it will work when tsfactorydataprovider will be replaced
-							//@NOTE to use it, uncomment this whole block and remove the block below "temporal replacement"
-							// r_line = lines[active[la]].prebook && lines[active[la]].prebook.slice();
-							// line = lines[active[la]].live && intersect(lines[active[la]].live, mask);
-							// console.log(active[la], "p", r_line, "L", line);
-							// if (!!ticks_by_agent[active[la]]) {
-							// 	_.map(ticks_by_agent[active[la]], t => {
-							// 		if (r_line && (t.get("booking_method") == "prebook")) {
-							// 			t.placed = insertTick(r_line, t.get("time_description"));
-							// 			t.placed && !!line && markReserved(line, t.placed);
-							// 		}
-							// 		if (line && (t.get("booking_method") == "live")) {
-							// 			t.placed = insertTick(line, t.get("time_description"), t.get("service_count"));
-							// 			t.placed && !!r_line && markReserved(r_line, t.placed);
-							// 		}
-							// 	});
-							// }
-							// // console.log("befo", line);
-							// //@NOTE putting the rest ticks, ignore unplaced
-							// if (!!ticks_by_agent.rest) {
-							// 	_.map(ticks_by_agent.rest, t => {
-							// 		console.log(">>", t.id, t.placed, t.booking_method, canPlace(pmap[active[la]], t, query));
-							// 		if (!t.placed && canPlace(pmap[active[la]], t, query)) {
-							// 			if (r_line && (t.get("booking_method") == "prebook")) {
-							// 				t.placed = insertTick(r_line, t.get("time_description"));
-							// 				t.placed && !!line && markReserved(line, t.placed);
-							// 			}
-							// 			if (line && (t.get("booking_method") == "live")) {
-							// 				t.placed = insertTick(line, t.get("time_description"), t.get("service_count"));
-							// 				t.placed && !!r_line && markReserved(r_line, t.placed);
-							// 			}
-							// 		}
-							// 	});
-							// }
-							// if (r_line) {
-							// 	pline_stats[active[la]] = statLine(lines[active[la]].prebook, r_line);
-							// }
-							// line && (lines[active[la]].live = line);
-							// r_line && (lines[active[la]].prebook = intersect(r_line, mask));
-
-							//@NOTE temporal replacement of commented above code
-							r_line = lines[active[la]].prebook && lines[active[la]].prebook.slice();
-							line = lines[active[la]].live && intersect(lines[active[la]].live, mask);
-							console.log(active[la], "p", r_line, "L", line);
-							if (!!ticks_by_agent[active[la]]) {
-								_.map(ticks_by_agent[active[la]], t => {
-									if (line && (t.get("booking_method") == "prebook")) {
-										t.placed = insertTick(line, t.get("time_description"));
-										t.placed && !!r_line && markReserved(r_line, t.placed);
-									}
-									if (line && (t.get("booking_method") == "live")) {
-										t.placed = insertTick(line, t.get("time_description"), t.get("service_count"));
-										t.placed && !!r_line && markReserved(r_line, t.placed);
-									}
-								});
-							}
-							if (!!ticks_by_agent.rest) {
-								_.map(ticks_by_agent.rest, t => {
-									// console.log(">>", t.id, t.placed, t.booking_method, canPlace(pmap[active[la]], t, query));
-									if (!t.placed && canPlace(pmap[active[la]], t, query)) {
-										if (line && (t.get("booking_method") == "prebook")) {
-											t.placed = insertTick(line, t.get("time_description")); // that's
-											t.placed && !!r_line && markReserved(r_line, t.placed); // the difference
-										}
-										if (line && (t.get("booking_method") == "live")) {
-											t.placed = insertTick(line, t.get("time_description"), t.get("service_count"));
-											t.placed && !!r_line && markReserved(r_line, t.placed);
-										}
-									}
-								});
-							}
-							if (r_line) {
-								pline_stats[active[la]] = statLine(lines[active[la]].prebook, r_line);
-							}
-							line && (lines[active[la]].live = line);
-							r_line && (lines[active[la]].prebook = intersect(r_line, mask));
-						}
-
 
 						console.log("lines", lines);
 						console.log("org_td", org_time_description);
 						// console.log("new tick by agent", new_ticks);
-						let ticks_reserved = (statTickets(tickets))
-							.reserved_prebook;
 
 						la = active.length;
 						while (la--) {
-							// console.log(active[la], lines[active[la]]);
-							line = lines[active[la]].prebook;
+							console.log(active[la], lines[active[la]]);
+							line = lines[active[la]];
 							if (!line)
 								continue;
-							// line = intersect(line, org_time_description);
-							line_sz = line.length;
-							console.log("appliable for prebook", active[la], lines[active[la]].prebook);
+							line = intersect(line, org_time_description);
 
 							let sl = services.length,
 								plan_name = _planName(active[la], query.org_merged.id, day_data.d_date_key),
 								service;
 							for (var ii = 0; ii < sl; ii++) {
 								service = services[ii];
-								//stats
-								p_stats[service.parent.id] = p_stats[service.parent.id] || {
-									part: _.clamp(service.get("prebook_today_percentage") || 0, 0, 100) / 100,
-									max_available: 0,
-									max_solid: 0,
-									reserved: ticks_reserved,
-									prebook_expiry: service.get("prebook_operation_time"),
-									live_expiry: service.get("live_operation_time")
-								};
-								p_stats[service.parent.id].max_available += _.get(pline_stats, [active[la], 'max_available'], 0);
-								p_stats[service.parent.id].max_solid += _.get(pline_stats, [active[la], 'max_solid'], 0);
-								//slots
 								optime = service.get("prebook_operation_time");
 								p_slots[service.parent.id] = p_slots[service.parent.id] || [];
 								// console.log("provides", active[la], service.parent.id, provides(pmap[active[la]], service.parent.id));
-								if (!provides(pmap[active[la]].get("provides"), service.parent.id))
+								if (!provides(pmap[active[la]], service.parent.id))
 									continue;
-
 								for (var i = 0; i < line_sz; i = i + 2) {
 									gap = line[i + 1] - line[i];
 									slots_cnt = (gap / optime) | 0;
@@ -509,7 +357,7 @@ class Mosaic {
 									for (var j = 0; j < slots_cnt; j++) {
 										nxt = curr + optime;
 										// console.log(service.parent.id, j, curr, nxt);
-										p_slots[service.parent.id].push({
+										res[service.parent.id].push({
 											time_description: [curr, nxt],
 											operator: mode.is_d_mode ? null : active[la],
 											destination: mode.is_d_mode ? active[la] : null,
@@ -518,64 +366,12 @@ class Mosaic {
 										curr = nxt;
 									}
 								}
-								// console.log("slots for prebook", service.parent.id, p_slots[service.parent.id].length);
-							}
-						}
-
-						la = active.length;
-						while (la--) {
-							line = lines[active[la]].live;
-							if (!line)
-								continue;
-							// line = intersect(line, org_time_description);
-							line_sz = line.length;
-
-							let sl = services.length,
-								plan_name = _planName(active[la], query.org_merged.id, day_data.d_date_key),
-								service;
-
-							if (!agentState(pmap[active[la]], query, "live"))
-								continue;
-							console.log("appliable for live", active[la], line, line_sz);
-
-							for (var ii = 0; ii < sl; ii++) {
-								service = services[ii];
-								optime = service.get("live_operation_time");
-								l_slots[service.parent.id] = l_slots[service.parent.id] || [];
-								// console.log("provides", active[la], service.parent.id, provides(pmap[active[la]], service.parent.id));
-								if (!provides(pmap[active[la]].get("provides"), service.parent.id))
-									continue;
-								// console.log("slots for live", la, service.parent.id, l_slots[service.parent.id].length);
-
-								for (var i = 0; i < line_sz; i = i + 2) {
-									gap = line[i + 1] - line[i];
-									slots_cnt = (gap / optime) | 0;
-									curr = line[i];
-									// console.log(service.parent.id, i, gap, line[i + 1], line[i], line_sz);
-									for (var j = 0; j < slots_cnt; j++) {
-										nxt = curr + optime;
-										// console.log(service.parent.id, j, curr, nxt);
-										l_slots[service.parent.id].push({
-											time_description: [curr, nxt],
-											operator: mode.is_d_mode ? null : active[la],
-											destination: mode.is_d_mode ? active[la] : null,
-											source: plan_name
-										});
-										curr = nxt;
-									}
-								}
-								// console.log("slots for live", la, service.parent.id, l_slots[service.parent.id].length);
-
 							}
 						}
 
 						let diff = process.hrtime(time);
 						console.log('OBSERVED MOSAIC SLOTS IN %d seconds', diff[0] + diff[1] / 1e9);
-						return {
-							prebook: p_slots,
-							live: l_slots,
-							prebook_stats: p_stats
-						};
+
 					});
 			})
 
