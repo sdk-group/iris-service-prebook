@@ -549,8 +549,7 @@ class Mosaic {
 									max_solid: 0,
 									reserved: ticks_reserved,
 									prebook_expiry: service.get("prebook_operation_time"),
-									live_expiry: service.get("live_operation_time"),
-									offset: query.org_merged.available_slots_offset || 0
+									live_expiry: service.get("live_operation_time")
 								};
 								p_stats[service.parent.id].max_available += _.get(pline_stats, [active[la], 'max_available'], 0);
 								p_stats[service.parent.id].max_solid += _.get(pline_stats, [active[la], 'max_solid'], 0);
