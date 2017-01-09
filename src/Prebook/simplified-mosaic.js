@@ -29,17 +29,19 @@ function statLine(initial, filled) {
 
 function statTickets(ticks) {
 	let l = ticks.length,
-		reserved_live = 0,
-		reserved_prebook = 0,
-		td;
+		reserved_live = {},
+		reserved_prebook = {},
+		td, srv;
 	while (l--) {
+		srv = ticks[l].get("service");
+		td = ticks[l].get("time_description");
 		if (ticks[l].get("booking_method") == "prebook") {
-			td = ticks[l].get("time_description");
-			reserved_prebook += (td.constructor == Array ? td[1] - td[0] : td);
+			reserved_prebook[srv] = reserved_prebook[srv] || 0;
+			reserved_prebook[srv] += (td.constructor == Array ? td[1] - td[0] : td);
 		}
 		if (ticks[l].get("booking_method") == "live") {
-			td = ticks[l].get("time_description");
-			reserved_live += (td.constructor == Array ? td[1] - td[0] : td);
+			reserved_live[srv] = reserved_live[srv] || 0;
+			reserved_live[srv] += (td.constructor == Array ? td[1] - td[0] : td);
 		}
 	}
 	return {
@@ -493,25 +495,23 @@ class Mosaic {
 							line_sz = line.length;
 							// console.log("line", line, service.parent.id, "prebook");
 							//stats
-							p_stats[service.parent.id] = p_stats[service.parent.id] || {
+							p_stats = p_stats || {
 								part: _.clamp(service.get("prebook_today_percentage") || 0, 0, 100) / 100,
 								max_available: 0,
-								max_solid: 0,
-								reserved: ticks_reserved,
-								prebook_expiry: service.get("prebook_operation_time"),
-								live_expiry: service.get("live_operation_time"),
-								offset: query.org_merged.available_slots_offset || 0
+								reserved: ticks_reserved[service.parent.id] || 0
 							};
 
 							if (!provides(pmap[active[la]].get("provides"), service.parent.id))
 								continue;
 
-							p_stats[service.parent.id].max_available += _.get(pline_stats, [active[la], 'max_available'], 0);
-							p_stats[service.parent.id].max_solid += _.get(pline_stats, [active[la], 'max_solid'], 0);
+							p_stats.max_available += _.get(pline_stats, [active[la], 'max_available'], 0);
 
 						}
 
-						//QUOTA CHECK HERE
+						let part = p_stats.part;
+						let real_part = p_stats.reserved / p_stats.max_available;
+						if (part < real_part)
+							return false;
 
 						la = active.length;
 						let t = in_tick;
@@ -839,19 +839,18 @@ class Mosaic {
 								p_stats[service.parent.id] = p_stats[service.parent.id] || {
 									part: _.clamp(service.get("prebook_today_percentage") || 0, 0, 100) / 100,
 									max_available: 0,
-									max_solid: 0,
-									reserved: ticks_reserved,
-									prebook_expiry: service.get("prebook_operation_time"),
-									live_expiry: service.get("live_operation_time"),
-									offset: query.org_merged.available_slots_offset || 0
+									reserved: ticks_reserved[service.parent.id] || 0
 								};
+								if (!provides(pmap[active[la]].get("provides"), service.parent.id))
+									continue;
 								p_stats[service.parent.id].max_available += _.get(pline_stats, [active[la], 'max_available'], 0);
-								p_stats[service.parent.id].max_solid += _.get(pline_stats, [active[la], 'max_solid'], 0);
 								//slots
 								optime = service.get("prebook_operation_time");
 								p_slots[service.parent.id] = p_slots[service.parent.id] || [];
 								// console.log("provides", active[la], service.parent.id, provides(pmap[active[la]], service.parent.id));
-								if (!provides(pmap[active[la]].get("provides"), service.parent.id))
+								let part = p_stats[service.parent.id].part;
+								let real_part = p_stats[service.parent.id].reserved / p_stats[service.parent.id].max_available;
+								if (part < real_part)
 									continue;
 
 								for (var i = 0; i < line_sz; i = i + 2) {
