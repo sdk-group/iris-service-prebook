@@ -70,7 +70,7 @@ class Prebook {
 			});
 
 			this.emitter.on('ticket.emit.state', (data) => {
-				if (data.event_name == 'register' || (data.event_name == 'book' && data.today) || data.event_name == 'closed' || data.event_name == 'processing') {
+				if (data.event_name == 'register' || (data.event_name == 'book' && data.today) || data.event_name == 'close' || data.event_name == 'remove' || data.event_name == 'restore' || data.event_name == 'processing') {
 					console.log("TICK EMIT STATE GATH");
 					Gatherer.invalidate(data.ticket.org_destination);
 				}
@@ -183,7 +183,7 @@ class Prebook {
 
 	statsByOrganization(organization_data) {
 		let org = organization_data;
-		let stats;
+		let stats, sm_stats;
 		let mode = org.org_merged.workstation_resource_enabled ? 'destination' : 'operator';
 		org.agent_type = mode;
 		if (_.isNumber(org.org_merged.max_slots_per_day))
@@ -232,6 +232,7 @@ class Prebook {
 					agent_type: org.agent_type,
 					agent_keys: agent_keys,
 					d_date: dedicated,
+					d_date_key: dedicated.format("YYYY-MM-DD"),
 					ltd: ltd,
 					ptd: ptd,
 					service_keys: srv
@@ -254,21 +255,10 @@ class Prebook {
 			})
 			.then((res) => {
 				stats = res.stats || {};
-				return Collector.process({
-					actor: '*',
-					time_description: org.ptd,
-					dedicated_date: org.d_date,
-					service_keys: this.services.getSystemName('registry', 'service', [org.org_merged.id]),
-					actor_keys: org.agent_keys.all,
-					actor_type: org.agent_type,
-					organization: org.org_merged.id,
-					method: 'prebook',
-					quota_status: true,
-					today: true
-				});
+				return SimplifiedMosaic.daySlots(org, true);
 			})
 			.then((res) => {
-				stats = _.merge(stats, res.stats);
+				sm_stats = res;
 				return Promise.mapSeries(org.service_keys, (service) => {
 					return this.patchwerk.get('Service', {
 						department: org.org_merged.id,
@@ -300,7 +290,7 @@ class Prebook {
 						prebook: []
 					}
 				};
-
+				// console.log("================================================================\n\n", sm_stats);
 				let result = _.reduce(res, (acc, srv, index) => {
 					//@FIXIT: proper way to determine service key
 					// let success = !!(stats.max_available.live * part) && ((stats.max_available.live * part) >= (stats.reserved));
@@ -311,17 +301,19 @@ class Prebook {
 					// console.log(org.org_merged.id, org.service_keys[index], _.head(stats[org.service_keys[index]]), srv_data, srv);
 					acc[org.service_keys[index]] = {
 						live_slot_size: srv.live_operation_time,
-						prebook_slot_size: srv.prebook_operation_time,
+						// prebook_slot_size: srv.prebook_operation_time,
 						live_available_time: srv_data.available.live,
-						prebook_available_time: srv_data.available.prebook,
+						// prebook_available_time: srv_data.available.prebook,
 						live_total_time: srv_data.max_available.live,
-						prebook_total_time: srv_data.max_available.prebook,
+						// prebook_total_time: srv_data.max_available.prebook,
 						live_solid_time: srv_data.max_solid.live,
-						prebook_solid_time: srv_data.max_solid.prebook,
+						// prebook_solid_time: srv_data.max_solid.prebook,
 						live_chunk_mapping: srv_data.mapping.live,
-						prebook_chunk_mapping: srv_data.mapping.prebook,
-						prebook_percentage: part,
-						reserved: srv_data.reserved
+						// prebook_chunk_mapping: srv_data.mapping.prebook,
+						// prebook_percentage: part,
+						reserved: srv_data.reserved,
+						sm_stats: (sm_stats.prebook[org.service_keys[index]] || [])
+							.length
 					};
 					expiry.push(srv.live_operation_time, srv.prebook_operation_time);
 
@@ -619,7 +611,8 @@ class Prebook {
 	}
 
 	_checkSlots(org, tickets) {
-		return this.actionGetStats(org)
+		return org.today ? SimplifiedMosaic.checkPlacement(org, tickets)
+			.then(res => res.success) : this.actionGetStats(org)
 			.then((keyed) => {
 				let pre = keyed[0];
 				let s_count = tickets[0].service_count;
@@ -628,6 +621,7 @@ class Prebook {
 				let count = _.round((pre.available.prebook || 0) / (pre.data.srv.prebook_operation_time));
 				// org = pre.data;
 				// console.log("OBSERVING PREBOOK II", count, pre.available, org.org_merged.prebook_observe_max_slots || count);
+				// return !success ? [] : this._getOrComputeServiceSlots(org, count);
 				return !success ? [] : this._getOrComputeServiceSlots(org, count);
 			})
 			.then((cache) => {
@@ -659,7 +653,7 @@ class Prebook {
 	}
 
 	_confirm(force, org, tickets) {
-		let manualObserve = org.today ? Promise.resolve(true) : (force ? Promise.resolve(true) : this._checkSlots(org, tickets));
+		let manualObserve = (force ? Promise.resolve(true) : this._checkSlots(org, tickets));
 		return manualObserve.then(approval => {
 				if (!approval)
 					return Promise.reject(new Error('Failed to place a ticket.'));
@@ -673,8 +667,9 @@ class Prebook {
 					dedicated_date: org.d_date,
 					tickets: tickets,
 					method: 'prebook',
+					nocheck: true,
 					// nocheck: !!force,
-					nocheck: org.today ? !!force : true,
+					// nocheck: org.today ? !!force : true,
 					today: org.today
 				});
 			})
@@ -1066,7 +1061,7 @@ class Prebook {
 					if (!success) {
 						acc[local_key] = success;
 					} else {
-						acc[local_key] = pre.today || this.getServiceSlots({
+						acc[local_key] = this.getServiceSlots({
 								preprocessed: pre,
 								operator: operator,
 								destination: destination,
@@ -1309,7 +1304,7 @@ class Prebook {
 						preprocessed,
 						count: count
 					})
-					.then((computed) => _.map(computed, (t) => _.pick(t, ['time_description', 'operator', 'destination', 'source'])) || []);
+					// .then((computed) => _.map(computed, (t) => _.pick(t, ['time_description', 'operator', 'destination', 'source'])) || []);
 			});
 	}
 
@@ -1460,6 +1455,9 @@ class Prebook {
 		count
 	}) {
 		// console.log("PRE CMP SS", preprocessed);
+		return SimplifiedMosaic.daySlots(preprocessed)
+			.then(res => res.prebook);
+
 		return this.iris.observe({
 				actor: '*',
 				services: [{
