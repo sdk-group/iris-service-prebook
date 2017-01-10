@@ -158,10 +158,8 @@ function intersect(c1, c2) {
 	return result;
 }
 
-function canPlace(agent, tick, initial_query) {
-	return provides(agent.get("provides"), tick.get("service")) &&
-		// bookingMethod(agent.get("filtering_method"), tick.get("booking_method")) &&
-		agentState(agent, initial_query, tick.get("booking_method"));
+function canPlace(agent, tick, initial_query, raw = false) {
+	return provides(agent.get("provides"), (raw ? tick.service : tick.get("service")));
 }
 
 function agentState(agent, query, method) {
@@ -206,9 +204,10 @@ class Mosaic {
 	}
 
 
-	checkPlacement(query, in_tick) {
+	checkPlacement(query, new_ticks) {
 		let time = process.hrtime();
 		let agents, services, schedules;
+		let new_tickets = _.castArray(new_ticks);
 		// console.log("###############################################################\n", query.agent_keys, query.d_date_key, only_service);
 
 		//@NOTE agent type is either operator or destination
@@ -219,10 +218,10 @@ class Mosaic {
 
 		return this.patchwerk.get('Service', {
 				department: query.org_merged.id,
-				counter: _.last(in_tick.service.split("-"))
+				counter: _.map(new_tickets, in_tick => _.last(in_tick.service.split("-")))
 			})
 			.then(srvs => {
-				services = srvs;
+				services = _.castArray(srvs);
 				return this._agents(query, mode);
 			})
 			.then(res => {
@@ -387,10 +386,9 @@ class Mosaic {
 							line_sz, gap, optime, curr, nxt, ts, slots_cnt,
 							day = day_data.d_date.format('dddd'),
 							org_time_description = [0, 86400],
-							mask = [day_data.today ? now : 0, 86400],
+							mask = [now, 86400],
 							pb_mask = mask.slice();
-						if (day_data.today)
-							pb_mask[0] = pb_mask[0] + (day_data.org_merged.available_slots_offset || 0);
+						pb_mask[0] = pb_mask[0] + (day_data.org_merged.prebook_observe_offset || 0);
 
 						//@NOTE forming organization line to apply to general agent lines
 						if (day_data.org_merged.has_schedule && day_data.org_merged.has_schedule.prebook) {
@@ -439,7 +437,7 @@ class Mosaic {
 							}
 							if (!!ticks_by_agent.rest) {
 								_.map(ticks_by_agent.rest, t => {
-									console.log(">>", t.id, t.placed, t.booking_method, canPlace(pmap[active[la]], t, query));
+									// console.log(">>", t.id, t.placed, t.booking_method, canPlace(pmap[active[la]], t, query));
 									if (!t.placed && canPlace(pmap[active[la]], t, query)) {
 										if (r_line && (t.get("booking_method") == "prebook")) {
 											t.placed = insertTick(r_line, t.get("time_description"));
@@ -456,7 +454,7 @@ class Mosaic {
 								pline_stats[active[la]] = statLine(lines[active[la]].prebook, r_line);
 							}
 							line && (lines[active[la]].live = line);
-							r_line && (lines[active[la]].prebook = intersect(r_line, pb_mask));
+							r_line && (lines[active[la]].prebook = intersect(r_line, mask));
 						}
 
 
@@ -488,65 +486,108 @@ class Mosaic {
 							// line = intersect(line, org_time_description);
 							a_line_sz = a_line.length;
 							// console.log("appliable for prebook", active[la], lines[active[la]].prebook);
+							let sl = services.length,
+								service;
+							for (var ii = 0; ii < sl; ii++) {
+								service = services[ii];
+								line = s_lines[service.parent.id].prebook || [];
+								line = intersect(a_line, line);
+								line_sz = line.length;
+								// console.log("line", line, service.parent.id, "prebook");
+								//stats
+								p_stats[service.parent.id] = p_stats[service.parent.id] || {
+									part: _.clamp(service.get("prebook_today_percentage") || 0, 0, 100) / 100,
+									max_available: 0,
+									reserved: ticks_reserved[service.parent.id] || 0
+								};
 
-							let service = services[0];
-							line = s_lines[service.parent.id].prebook || [];
-							line = intersect(a_line, line);
-							line_sz = line.length;
-							// console.log("line", line, service.parent.id, "prebook");
-							//stats
-							p_stats = p_stats || {
-								part: _.clamp(service.get("prebook_today_percentage") || 0, 0, 100) / 100,
-								max_available: 0,
-								reserved: ticks_reserved[service.parent.id] || 0
-							};
+								if (!provides(pmap[active[la]].get("provides"), service.parent.id))
+									continue;
 
-							if (!provides(pmap[active[la]].get("provides"), service.parent.id))
-								continue;
-
-							p_stats.max_available += _.get(pline_stats, [active[la], 'max_available'], 0);
+								p_stats[service.parent.id].max_available += _.get(pline_stats, [active[la], 'max_available'], 0);
+							}
 
 						}
 
-						let part = p_stats.part;
-						let real_part = p_stats.reserved / p_stats.max_available;
-						if (part < real_part)
-							return false;
+
+						let result = {
+							placed: [],
+							lost: [],
+							success: false
+						};
+						let part, real_part, tl = new_tickets.length,
+							t_srv;
+						for (var ii = 0; ii < tl; ii++) {
+							t_srv = new_tickets[ii].service;
+							part = p_stats[t_srv].part;
+							real_part = p_stats[t_srv].reserved / p_stats[t_srv].max_available;
+							new_tickets[ii].quota_pass = (part > real_part);
+							console.log(new_tickets[ii]);
+						}
+						let new_tickets_by_agent = _.groupBy(new_tickets, t => (t[query.agent_type] || 'rest'));
+
+						console.log("<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>", tl, new_tickets_by_agent, p_stats);
+
 
 						la = active.length;
-						let t = in_tick;
 						while (la--) {
-							r_line = lines[active[la]].prebook && lines[active[la]].prebook.slice();
-							line = lines[active[la]].live && intersect(lines[active[la]].live, mask);
-							console.log(">>", t.id, t.placed, t.booking_method, canPlace(pmap[active[la]], t, query));
-							if (canPlace(pmap[active[la]], t, query)) {
-								if (r_line && (t.booking_method == "prebook")) {
-									t.placed = insertTick(r_line, t.time_description);
-									t.placed && !!line && markReserved(line, t.placed);
-								}
-								if (line && (t.booking_method == "live")) {
-									t.placed = insertTick(line, t.time_description, t.service_count);
-									t.placed && !!r_line && markReserved(r_line, t.placed);
-								}
-							}
-							if (!!t.placed)
-								break;
-						}
+							r_line = lines[active[la]].prebook;
+							line = lines[active[la]].live;
 
+							if (!!new_tickets_by_agent[active[la]]) {
+								_.map(new_tickets_by_agent[active[la]], t => {
+									if (!t.quota_pass || !!t.placed)
+										return;
+									if (r_line && (t.booking_method == "prebook")) {
+										t.placed = insertTick(r_line, t.time_description);
+										t.placed && !!line && markReserved(line, t.placed);
+									}
+									if (line && (t.booking_method == "live")) {
+										t.placed = insertTick(line, t.time_description, t.service_count);
+										t.placed && !!r_line && markReserved(r_line, t.placed);
+									}
+								});
+							}
+							if (!!new_tickets_by_agent.rest) {
+								_.map(new_tickets_by_agent.rest, t => {
+									console.log(">>", t.id, t.placed, t.booking_method, canPlace(pmap[active[la]], t, query, true), r_line);
+									if (t.quota_pass && !t.placed && canPlace(pmap[active[la]], t, query, true)) {
+
+										if (r_line && (t.booking_method == "prebook")) {
+											t.placed = insertTick(r_line, t.time_description);
+											t.placed && !!line && markReserved(line, t.placed);
+										}
+										if (line && (t.booking_method == "live")) {
+											t.placed = insertTick(line, t.time_description, t.service_count);
+											t.placed && !!r_line && markReserved(r_line, t.placed);
+										}
+									}
+								});
+							}
+						}
+						let t;
+						for (var ii = 0; ii < tl; ii++) {
+							t = new_tickets[ii];
+							if (!t.quota_pass || !t.placed)
+								result.lost.push(t);
+							else
+								result.placed.push(t);
+						}
+						result.success = (result.placed.length == new_tickets.length);
+						console.log(result);
 						let diff = process.hrtime(time);
 						console.log('OBSERVED MOSAIC SLOTS IN %d seconds', diff[0] + diff[1] / 1e9);
-						return !!t.placed;
+						return result;
 					});
 			})
 
 	}
 
 
-	daySlots(query) {
+	daySlots(query, all = false) {
 		let time = process.hrtime();
 		let agents, services, schedules;
-		// console.log("###############################################################\n", query.agent_keys, query.d_date_key, only_service);
-
+		console.log("###############################################################\n", query);
 		//@NOTE agent type is either operator or destination
 
 		let now = this._now(query);
@@ -555,10 +596,10 @@ class Mosaic {
 
 		return this.patchwerk.get('Service', {
 				department: query.org_merged.id,
-				counter: "*"
+				counter: all ? "*" : _.last(query.service.split("-"))
 			})
 			.then(srvs => {
-				services = srvs;
+				services = _.castArray(srvs);
 				return this._agents(query, mode);
 			})
 			.then(res => {
@@ -723,10 +764,10 @@ class Mosaic {
 							line_sz, gap, optime, curr, nxt, ts, slots_cnt,
 							day = day_data.d_date.format('dddd'),
 							org_time_description = [0, 86400],
-							mask = [day_data.today ? now : 0, 86400],
+							mask = [now, 86400],
 							pb_mask = mask.slice();
-						if (day_data.today)
-							pb_mask[0] = pb_mask[0] + (day_data.org_merged.available_slots_offset || 0);
+						pb_mask[0] = pb_mask[0] + (day_data.org_merged.prebook_observe_offset || 0);
+						console.log("MASKS", mask, pb_mask, day_data);
 
 						//@NOTE forming organization line to apply to general agent lines
 						if (day_data.org_merged.has_schedule && day_data.org_merged.has_schedule.prebook) {
@@ -775,7 +816,7 @@ class Mosaic {
 							}
 							if (!!ticks_by_agent.rest) {
 								_.map(ticks_by_agent.rest, t => {
-									console.log(">>", t.id, t.placed, t.booking_method, canPlace(pmap[active[la]], t, query));
+									// console.log(">>", t.id, t.placed, t.booking_method, canPlace(pmap[active[la]], t, query));
 									if (!t.placed && canPlace(pmap[active[la]], t, query)) {
 										if (r_line && (t.get("booking_method") == "prebook")) {
 											t.placed = insertTick(r_line, t.get("time_description"));
@@ -791,8 +832,10 @@ class Mosaic {
 							if (r_line) {
 								pline_stats[active[la]] = statLine(lines[active[la]].prebook, r_line);
 							}
+							console.log("lines after", "p", r_line, "L", line);
 							line && (lines[active[la]].live = line);
 							r_line && (lines[active[la]].prebook = intersect(r_line, pb_mask));
+							console.log("lines after II", lines[active[la]]);
 						}
 
 
@@ -850,7 +893,8 @@ class Mosaic {
 								// console.log("provides", active[la], service.parent.id, provides(pmap[active[la]], service.parent.id));
 								let part = p_stats[service.parent.id].part;
 								let real_part = p_stats[service.parent.id].reserved / p_stats[service.parent.id].max_available;
-								if (part < real_part)
+								console.log("PARTS", part, real_part, part < real_part);
+								if (part <= real_part)
 									continue;
 
 								for (var i = 0; i < line_sz; i = i + 2) {
@@ -877,7 +921,7 @@ class Mosaic {
 						let diff = process.hrtime(time);
 						console.log('OBSERVED MOSAIC SLOTS IN %d seconds', diff[0] + diff[1] / 1e9);
 						return {
-							prebook: p_slots,
+							prebook: all ? p_slots : p_slots[query.service],
 							prebook_stats: p_stats
 						};
 					});
@@ -1053,7 +1097,7 @@ class Mosaic {
 	_now(query) {
 		return moment.tz(query.org_merged.org_timezone)
 			.diff(moment.tz(query.org_merged.org_timezone)
-				.startOf('day'), 'seconds') + query.org_merged.prebook_observe_offset;
+				.startOf('day'), 'seconds');
 	}
 
 	_modeOption(query) {

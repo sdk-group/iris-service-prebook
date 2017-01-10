@@ -6,7 +6,7 @@ module.exports = {
 		// let max_slots = _.floor(_.min([datapart.prebook_available_time, (datapart.live_total_time * part - datapart.reserved)]) / datapart.prebook_slot_size);
 		// console.log("MAXSL", max_slots, datapart.prebook_available_time, (datapart.live_total_time * part - datapart.reserved));
 		let val = (datapart.forced_max_prebook_slots_count - datapart.forced_prebook_slots_count);
-		return _.isNumber(datapart.forced_max_prebook_slots_count) ? val : _.clamp(_.floor(_.sumBy(datapart.prebook_chunk_mapping, t => (_.floor(t / datapart.prebook_slot_size) - 1)) * part), 0, Infinity);
+		return _.isNumber(datapart.forced_max_prebook_slots_count) ? val : datapart.sm_stats; //_.clamp(_.floor(_.sumBy(datapart.prebook_chunk_mapping, t => (_.floor(t / datapart.prebook_slot_size) - 1)) * part), 0, Infinity);
 	}
 
 };
