@@ -17,6 +17,7 @@ const UIValidation = require("iris-user-info-validation");
 var UIValidator;
 
 var RESTRICTED_DAYS;
+var GathererTimer;
 
 class Prebook {
 	constructor() {
@@ -43,6 +44,7 @@ class Prebook {
 		this.prebook_check_interval = config.prebook_check_interval || 30;
 		this.warmup_throttle_hours = config.warmup_throttle_hours || 24;
 		this.service_quota_flag_expiry = config.service_quota_flag_expiry || 1800;
+		this.available_slots_emit_interval = config.available_slots_emit_interval || 45000;
 	}
 
 	launch() {
@@ -62,7 +64,21 @@ class Prebook {
 			this.emitter.listenTask('prebook.recount.service.slots', (data) => this.actionRecountServiceSlots(data));
 
 			this.emitter.on('engine.ready', () => {
-				return this.actionFillGatherer({});
+				return this.actionFillGatherer({})
+					.then(() => {
+						GathererTimer = setInterval(() => {
+							return Promise.mapSeries(Gatherer.listMetadataSections(), section => this.actionServiceStats({
+									organization: section
+								})
+								.then((res) => {
+									console.log("EMIT GATH", _.join(["service-stats", Gatherer.metadata(section)], "."));
+									this.emitter.emit("broadcast", {
+										event: _.join(["service-stats", Gatherer.metadata(section)], "."),
+										data: res
+									});
+								}))
+						}, this.available_slots_emit_interval);
+					});
 			});
 
 			this.emitter.on('engine.ready', () => {
@@ -104,7 +120,7 @@ class Prebook {
 	}) {
 		let org_seq;
 		let now = _.now();
-		let org_keys = _.filter(organization, org => !Gatherer.locked(org));
+		let org_keys = _.filter(_.castArray(organization), org => !Gatherer.locked(org));
 		let is_all = _.isEmpty(organization);
 		console.log("FILL", is_all, organization, org_keys, Gatherer.timestamp, Gatherer._expiry, Gatherer._locked);
 		if (_.isEmpty(org_keys) && !is_all)
@@ -133,6 +149,7 @@ class Prebook {
 				_.map(res, (org_data, index) => {
 					let section = org_seq[index].org_merged.id;
 					Gatherer.update(section, org_data.data);
+					Gatherer.metadata(section, org_seq[index].org_addr);
 					Gatherer.setExpiry(section, now + org_data.expiry * 1000);
 				});
 				if (is_all) {
@@ -330,7 +347,7 @@ class Prebook {
 		organization
 	}) {
 		// console.log("SERVSLOTs", Gatherer.stats(organization));
-		// console.log("sslots", organization, Gatherer.expired(organization));
+		console.log("sslots", organization, Gatherer.expired(organization));
 		if (Gatherer.expired(organization))
 			return this.actionFillGatherer({
 					organization: organization
@@ -646,7 +663,7 @@ class Prebook {
 						}
 					}
 				}
-				console.log("##############################################################\n", tickets, _.filter(cache, 'placed'), placed);
+				// console.log("##############################################################\n", tickets, _.filter(cache, 'placed'), placed);
 				placed = Object.keys(placed);
 				return Promise.resolve(placed.length == tickets.length);
 			});

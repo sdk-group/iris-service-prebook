@@ -9,6 +9,7 @@ class Gatherer {
 		this._computed = {};
 		this.timestamp = {};
 		this._expiry = {};
+		this._custom_metadata = {};
 	}
 
 	setTransforms(names) {
@@ -82,6 +83,16 @@ class Gatherer {
 
 	setExpiry(section, ts) {
 		this._expiry[section] = ts;
+	}
+
+	metadata(section, md) {
+		if (!md)
+			return this._custom_metadata[section];
+		return this._custom_metadata[section] = md;
+	}
+
+	listMetadataSections() {
+		return Object.keys(this._custom_metadata);
 	}
 
 }
