@@ -214,7 +214,7 @@ class Mosaic {
 
 		let now = this._now(query);
 		let mode = this._modeOption(query);
-		let active_states = ['registered', 'booked', 'called', 'postponed'];
+		let active_states = ['registered', 'booked', 'processing', 'called', 'postponed'];
 
 		return this.patchwerk.get('Service', {
 				department: query.org_merged.id,
@@ -416,13 +416,13 @@ class Mosaic {
 							}
 
 						}
-						console.log("lines pre", lines);
+						// console.log("lines pre", lines);
 
 						la = active.length;
 						while (la--) {
 							r_line = lines[active[la]].prebook && lines[active[la]].prebook.slice();
 							line = lines[active[la]].live && intersect(lines[active[la]].live, mask);
-							console.log(active[la], "p", r_line, "L", line);
+							// console.log(active[la], "p", r_line, "L", line);
 							if (!!ticks_by_agent[active[la]]) {
 								_.map(ticks_by_agent[active[la]], t => {
 									if (r_line && (t.get("booking_method") == "prebook")) {
@@ -458,8 +458,8 @@ class Mosaic {
 						}
 
 
-						console.log("lines", lines);
-						console.log("org_td", org_time_description);
+						// console.log("lines", lines);
+						// console.log("org_td", org_time_description);
 						// console.log("new tick by agent", new_ticks);
 						let ticks_reserved = (statTickets(tickets))
 							.reserved_prebook;
@@ -522,11 +522,11 @@ class Mosaic {
 							part = p_stats[t_srv].part;
 							real_part = p_stats[t_srv].reserved / p_stats[t_srv].max_available;
 							new_tickets[ii].quota_pass = (part > real_part);
-							console.log(new_tickets[ii]);
+							// console.log(new_tickets[ii]);
 						}
 						let new_tickets_by_agent = _.groupBy(new_tickets, t => (t[query.agent_type] || 'rest'));
 
-						console.log("<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>", tl, new_tickets_by_agent, p_stats);
+						// console.log("<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>", tl, new_tickets_by_agent, p_stats);
 
 
 						la = active.length;
@@ -550,7 +550,7 @@ class Mosaic {
 							}
 							if (!!new_tickets_by_agent.rest) {
 								_.map(new_tickets_by_agent.rest, t => {
-									console.log(">>", t.id, t.placed, t.booking_method, canPlace(pmap[active[la]], t, query, true), r_line);
+									// console.log(">>", t.id, t.placed, t.booking_method, canPlace(pmap[active[la]], t, query, true), r_line);
 									if (t.quota_pass && !t.placed && canPlace(pmap[active[la]], t, query, true)) {
 
 										if (r_line && (t.booking_method == "prebook")) {
@@ -574,7 +574,7 @@ class Mosaic {
 								result.placed.push(t);
 						}
 						result.success = (result.placed.length == new_tickets.length);
-						console.log(result);
+						// console.log(result);
 						let diff = process.hrtime(time);
 						console.log('OBSERVED MOSAIC SLOTS IN %d seconds', diff[0] + diff[1] / 1e9);
 						return result;
@@ -587,12 +587,12 @@ class Mosaic {
 	daySlots(query, all = false) {
 		let time = process.hrtime();
 		let agents, services, schedules;
-		console.log("###############################################################\n", query);
+		// console.log("###############################################################\n", query);
 		//@NOTE agent type is either operator or destination
 
 		let now = this._now(query);
 		let mode = this._modeOption(query);
-		let active_states = ['registered', 'booked', 'called', 'postponed'];
+		let active_states = ['registered', 'booked', 'processing', 'called', 'postponed'];
 
 		return this.patchwerk.get('Service', {
 				department: query.org_merged.id,
@@ -767,7 +767,7 @@ class Mosaic {
 							mask = [now, 86400],
 							pb_mask = mask.slice();
 						pb_mask[0] = pb_mask[0] + (day_data.org_merged.prebook_observe_offset || 0);
-						console.log("MASKS", mask, pb_mask, day_data);
+						// console.log("MASKS", mask, pb_mask, day_data);
 
 						//@NOTE forming organization line to apply to general agent lines
 						if (day_data.org_merged.has_schedule && day_data.org_merged.has_schedule.prebook) {
@@ -795,13 +795,13 @@ class Mosaic {
 							}
 
 						}
-						console.log("lines pre", lines);
+						// console.log("lines pre", lines);
 
 						la = active.length;
 						while (la--) {
 							r_line = lines[active[la]].prebook && lines[active[la]].prebook.slice();
 							line = lines[active[la]].live && intersect(lines[active[la]].live, mask);
-							console.log(active[la], "p", r_line, "L", line);
+							// console.log(active[la], "p", r_line, "L", line);
 							if (!!ticks_by_agent[active[la]]) {
 								_.map(ticks_by_agent[active[la]], t => {
 									if (r_line && (t.get("booking_method") == "prebook")) {
@@ -832,15 +832,15 @@ class Mosaic {
 							if (r_line) {
 								pline_stats[active[la]] = statLine(lines[active[la]].prebook, r_line);
 							}
-							console.log("lines after", "p", r_line, "L", line);
+							// console.log("lines after", "p", r_line, "L", line);
 							line && (lines[active[la]].live = line);
 							r_line && (lines[active[la]].prebook = intersect(r_line, pb_mask));
-							console.log("lines after II", lines[active[la]]);
+							// console.log("lines after II", lines[active[la]]);
 						}
 
 
-						console.log("lines", lines);
-						console.log("org_td", org_time_description);
+						// console.log("lines", lines);
+						// console.log("org_td", org_time_description);
 						// console.log("new tick by agent", new_ticks);
 						let ticks_reserved = (statTickets(tickets))
 							.reserved_prebook;
@@ -893,7 +893,7 @@ class Mosaic {
 								// console.log("provides", active[la], service.parent.id, provides(pmap[active[la]], service.parent.id));
 								let part = p_stats[service.parent.id].part;
 								let real_part = p_stats[service.parent.id].reserved / p_stats[service.parent.id].max_available;
-								console.log("PARTS", part, real_part, part < real_part);
+								// console.log("PARTS", part, real_part, part < real_part);
 								if (part <= real_part)
 									continue;
 
@@ -935,7 +935,7 @@ class Mosaic {
 		let agents, services, schedules;
 		let query = days[0],
 			is_d_mode = query.agent_type == 'destination';
-		console.log("######################QUERY##########################\n", query);
+		// console.log("######################QUERY##########################\n", query);
 		let agent_class = is_d_mode ? 'Workstation' : 'Employee';
 		return this.patchwerk.get('Service', {
 				department: query.org_merged.id,
@@ -962,7 +962,7 @@ class Mosaic {
 							sch_obj[sc[ll]] = true;
 					}
 				}
-				console.log("###############################################################\n", sch_obj);
+				// console.log("###############################################################\n", sch_obj);
 				let sch_keys = Object.keys(sch_obj);
 				return Promise.map(sch_keys, k => this.patchwerk.get('Schedule', {
 					key: k
@@ -986,7 +986,7 @@ class Mosaic {
 					// console.log("after", schedules[lsc]);
 					schedules[lsc].has_time_description = _.flatMap(_.castArray(schedules[lsc].has_time_description), 'data.0');
 				}
-				console.log("SCHEDULES", schedules);
+				// console.log("SCHEDULES", schedules);
 				while (la--) {
 					sch = agents[la].get("has_schedule");
 					sch = sch && sch.prebook;
@@ -1002,7 +1002,7 @@ class Mosaic {
 					prov = agents[la].get("provides");
 					pmap[agents[la].id] = prov;
 				}
-				console.log("AMAP\n", amap);
+				// console.log("AMAP\n", amap);
 
 				return Promise.mapSeries(days, day_data => this.patchwerk.get('Ticket', {
 							date: day_data.d_date_key,
@@ -1039,7 +1039,7 @@ class Mosaic {
 									});
 								}
 								line_sz = line.length;
-								console.log("plc", line, line_sz);
+								// console.log("plc", line, line_sz);
 
 								let sl = services.length,
 									plan_name = _planName(active[la], query.org_merged.id, day_data.d_date_key),
