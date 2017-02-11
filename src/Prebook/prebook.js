@@ -738,13 +738,14 @@ class Prebook {
 	actionTicketConfirm(data) {
 		console.log(data);
 		let fnames = ['service', 'operator', 'destination', 'code', 'force', 'token',
-						'org_destination', 'booking_method', 'time_description', 'label',
-						'dedicated_date',
-						'service_count',
-						'priority',
-						'user_info',
-						'user_info_description',
-						'workstation', 'user_id', 'user_type', '_action', 'request_id'];
+			'org_destination', 'booking_method', 'time_description', 'label',
+			'dedicated_date',
+			'service_count',
+			'priority',
+			'user_info',
+			'user_info_description',
+			'workstation', 'user_id', 'user_type', '_action', 'request_id'
+		];
 
 		let user_info = data.user_info || _.omit(data, fnames);
 		let force = !!data.force;
@@ -885,20 +886,23 @@ class Prebook {
 						event_name: event_name,
 						workstation: data.workstation
 					});
-					this.emitter.command('taskrunner.add.task', {
-						time: exp_diff / 1000,
-						task_name: "",
-						module_name: "queue",
-						task_type: "add-task",
-						cancellation_code: tick.code,
-						solo: true,
-						params: {
-							_action: "ticket-expire",
-							ticket: tick.id,
-							organization: tick.org_destination,
-							auto: true
-						}
-					});
+
+					if (!org.ws || !org.ws.prebook_autoregister) {
+						this.emitter.command('taskrunner.add.task', {
+							time: exp_diff / 1000,
+							task_name: "",
+							module_name: "queue",
+							task_type: "add-task",
+							cancellation_code: tick.code,
+							solo: true,
+							params: {
+								_action: "ticket-expire",
+								ticket: tick.id,
+								organization: tick.org_destination,
+								auto: true
+							}
+						});
+					}
 
 				});
 				return this._updateValidationInfo(source_info);
@@ -1363,9 +1367,10 @@ class Prebook {
 				// console.log("PUSHING", curr);
 				solid_slots.push({
 					time_description: [_.head(curr)
-							.time_description[0],
-							_.last(curr)
-							.time_description[1]],
+						.time_description[0],
+						_.last(curr)
+						.time_description[1]
+					],
 					from: curr
 				});
 			}
